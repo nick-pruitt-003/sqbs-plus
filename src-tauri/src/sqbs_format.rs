@@ -105,6 +105,7 @@ impl<R: BufRead> SqbsParser<R> {
 
         let tossup_sort_raw = self.next_int()?;
         let read_packets_info = (tossup_sort_raw & 2) != 0;
+        tournament.scoring.sort_by_ppg = (tossup_sort_raw & 1) != 0;
 
         tournament.warn_flags = self.next_int()? as u8;
 
@@ -324,15 +325,14 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
         }
     }
 
-    let has_exhibition = t.teams.iter().any(|tm| tm.exhibition);
-    let has_packets = !t.packets.is_empty();
-
     writeln!(w, "{}", if t.track_bonuses { 1 } else { 0 })?;
     writeln!(w, "{}", t.scoring.auto_track)?;
-    writeln!(w, "{}", (if t.scoring.track_power_neg { 1i64 } else { 0 }) | (if has_exhibition { 2 } else { 0 }))?;
+    // Bit 1 always set (signals exhibition section follows); bit 0 = track_power_neg
+    writeln!(w, "{}", if t.scoring.track_power_neg { 3i64 } else { 2 })?;
     writeln!(w, "{}", if t.scoring.track_light_round { 1 } else { 0 })?;
     writeln!(w, "{}", if t.scoring.track_tuh { 1 } else { 0 })?;
-    writeln!(w, "{}", if has_packets { 2i64 } else { 0 })?;
+    // Bit 1 always set (signals packet section follows); bit 0 = sort_by_ppg
+    writeln!(w, "{}", if t.scoring.sort_by_ppg { 3i64 } else { 2 })?;
     writeln!(w, "{}", t.warn_flags)?;
 
     writeln!(w, "{}", if t.reports.include_rounds        { 1 } else { 0 })?;
@@ -380,24 +380,22 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
 
     for i in 0..4 { writeln!(w, "{}", t.effective_q_value(i))?; }
 
-    if has_packets {
-        match (t.min_round(), t.max_round()) {
-            (Some(min_r), Some(max_r)) if max_r >= min_r => {
-                let count = max_r - min_r + 1;
-                writeln!(w, "{}", count)?;
-                for r in min_r..=max_r {
-                    writeln!(w, "{}", t.packets.get(&r).map(|s| s.as_str()).unwrap_or("-"))?;
-                }
+    // Packets: always write count; write names only when count > 0
+    match (t.min_round(), t.max_round()) {
+        (Some(min_r), Some(max_r)) if max_r >= min_r && !t.packets.is_empty() => {
+            let count = max_r - min_r + 1;
+            writeln!(w, "{}", count)?;
+            for r in min_r..=max_r {
+                writeln!(w, "{}", t.packets.get(&r).map(|s| s.as_str()).unwrap_or(" "))?;
             }
-            _ => { writeln!(w, "0")?; }
         }
+        _ => { writeln!(w, "0")?; }
     }
 
-    if has_exhibition {
-        writeln!(w, "{}", team_count)?;
-        for team in &t.teams {
-            writeln!(w, "{}", if team.exhibition { 1 } else { 0 })?;
-        }
+    // Exhibition: always write team count + per-team flags
+    writeln!(w, "{}", team_count)?;
+    for team in &t.teams {
+        writeln!(w, "{}", if team.exhibition { 1 } else { 0 })?;
     }
 
     Ok(())
@@ -574,6 +572,19 @@ mod tests {
         let t2 = round_trip(&t);
         assert!(!t2.teams[0].exhibition);
         assert!(t2.teams[1].exhibition);
+    }
+
+    #[test]
+    fn round_trip_sort_by_ppg() {
+        let mut t = minimal();
+        t.scoring.sort_by_ppg = true;
+        let t2 = round_trip(&t);
+        assert!(t2.scoring.sort_by_ppg);
+
+        let mut t3 = minimal();
+        t3.scoring.sort_by_ppg = false;
+        let t4 = round_trip(&t3);
+        assert!(!t4.scoring.sort_by_ppg);
     }
 
     #[test]

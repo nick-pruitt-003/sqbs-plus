@@ -205,6 +205,19 @@
           {/each}
         </div>
       </div>
+      <div class="section">
+        <h3>Individual Standings</h3>
+        <div class="field-grid">
+          <div class="field-row">
+            <label class="cb-label">
+              <input type="checkbox"
+                checked={tournament.scoring.sort_by_ppg}
+                onchange={(e) => updateScoring("sort_by_ppg", e.currentTarget.checked)} />
+              Sort Players by Pts/TUH
+            </label>
+          </div>
+        </div>
+      </div>
 
     <!-- ── Warnings ── -->
     {:else if activeTab === "warnings"}

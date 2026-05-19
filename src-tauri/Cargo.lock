@@ -3173,7 +3173,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sqbs-desktop"
+name = "sqbs-plus"
 version = "0.1.0"
 dependencies = [
  "serde",

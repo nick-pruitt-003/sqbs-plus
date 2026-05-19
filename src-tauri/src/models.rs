@@ -70,6 +70,8 @@ pub struct ScoringSettings {
     pub track_light_round: bool,
     pub track_tuh: bool,
     pub auto_track: u8,
+    /// Sort individual standings by Pts/TUH instead of total points
+    pub sort_by_ppg: bool,
 }
 
 impl Default for ScoringSettings {
@@ -81,6 +83,7 @@ impl Default for ScoringSettings {
             track_light_round: false,
             track_tuh: true,
             auto_track: 1, // Automatic
+            sort_by_ppg: false,
         }
     }
 }
