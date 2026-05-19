@@ -9,8 +9,6 @@
 
   const games: any[] = $derived(tournament.games);
   const total = $derived(games.length);
-  const game = $derived(currentIdx !== null ? games[currentIdx] : null);
-
   const qv: number[] = $derived(tournament.scoring.q_values as number[]);
   const qe: boolean[] = $derived(tournament.scoring.q_enabled as boolean[]);
   const bb: boolean = $derived(tournament.scoring.auto_track >= 3);
@@ -24,11 +22,6 @@
     if (idx < 0 || idx >= total) return;
     currentIdx = idx;
     draft = JSON.parse(JSON.stringify(games[idx]));
-  }
-
-  function gotoNew() {
-    currentIdx = total - 1;
-    draft = JSON.parse(JSON.stringify(games[total - 1]));
   }
 
   // ── New game ──────────────────────────────────────────────────────────────
@@ -144,10 +137,6 @@
     const updated = { ...side, player_scores: scores };
     updated.total_points = calcSideTotal(updated);
     draft = { ...draft, [sideKey]: updated };
-  }
-
-  function teamName(idx: number): string {
-    return tournament.teams[idx]?.name ?? `Team ${idx + 1}`;
   }
 
   function isActive(sideKey: string, pi: number): boolean {

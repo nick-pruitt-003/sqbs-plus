@@ -45,7 +45,7 @@ impl<R: BufRead> SqbsParser<R> {
         let mut tournament = Tournament::default();
 
         let team_count_raw = self.next_int()?;
-        if team_count_raw < 0 || team_count_raw > 100 {
+        if !(0..=100).contains(&team_count_raw) {
             return Err(io::Error::new(io::ErrorKind::InvalidData,
                 format!("invalid team count: {}", team_count_raw)));
         }
