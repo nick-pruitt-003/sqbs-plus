@@ -94,7 +94,9 @@ impl<R: BufRead> SqbsParser<R> {
 
         // Settings
         tournament.track_bonuses = self.next_int()? != 0;
-        tournament.scoring.auto_track = self.next_int()? as u8;
+        tournament.scoring.auto_track = self.next_int()?
+            .try_into()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("auto_track: {e}")))?;
 
         let track_power_neg_raw = self.next_int()?;
         let read_exhibition_info = (track_power_neg_raw & 2) != 0;
@@ -107,7 +109,9 @@ impl<R: BufRead> SqbsParser<R> {
         let read_packets_info = (tossup_sort_raw & 2) != 0;
         tournament.scoring.sort_by_ppg = (tossup_sort_raw & 1) != 0;
 
-        tournament.warn_flags = self.next_int()? as u8;
+        tournament.warn_flags = self.next_int()?
+            .try_into()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("warn_flags: {e}")))?;
 
         // Per-report enable booleans
         tournament.reports.include_rounds        = self.next_int()? != 0;
@@ -120,7 +124,9 @@ impl<R: BufRead> SqbsParser<R> {
         tournament.reports.use_style_sheet       = self.next_int()? != 0;
 
         tournament.uses_divisions = self.next_int()? != 0;
-        tournament.sort_method = self.next_int()? as u8;
+        tournament.sort_method = self.next_int()?
+            .try_into()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("sort_method: {e}")))?;
 
         tournament.name = self.next_line()?;
         let _host_name = self.next_line()?;
