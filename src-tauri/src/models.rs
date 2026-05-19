@@ -182,15 +182,16 @@ impl Tournament {
 
     /// Effective q_value for file writing: 0 if disabled, actual value if enabled
     pub fn effective_q_value(&self, i: usize) -> i32 {
+        if i >= 4 { return 0; }
         if self.scoring.q_enabled[i] { self.scoring.q_values[i] } else { 0 }
     }
 
-    pub fn min_round(&self) -> u32 {
-        self.games.iter().map(|g| g.round).min().unwrap_or(1)
+    pub fn min_round(&self) -> Option<u32> {
+        self.games.iter().map(|g| g.round).min()
     }
 
-    pub fn max_round(&self) -> u32 {
-        self.games.iter().map(|g| g.round).max().unwrap_or(1)
+    pub fn max_round(&self) -> Option<u32> {
+        self.games.iter().map(|g| g.round).max()
     }
 }
 

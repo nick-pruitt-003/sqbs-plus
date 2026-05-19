@@ -36,7 +36,7 @@ impl Nav {
     fn bar(&self) -> String {
         format!(
             "<table border=0 width=100%>\n<tr>\n\
-<meta http-equiv=\"Content-Type\" content=\"text/html;charset=ISO-8859-1\" />  \
+<meta http-equiv=\"Content-Type\" content=\"text/html;charset=UTF-8\" />  \
 <td><A HREF={s}>Standings</A></td>\n  \
 <td><A HREF={i}>Individuals</A></td>\n  \
 <td><A HREF={g}>Scoreboard</A></td>\n  \

@@ -44,9 +44,18 @@ impl<R: BufRead> SqbsParser<R> {
         self.load_lines()?;
         let mut tournament = Tournament::default();
 
-        let team_count = self.next_int()? as usize;
+        let team_count_raw = self.next_int()?;
+        if team_count_raw < 0 || team_count_raw > 100 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                format!("invalid team count: {}", team_count_raw)));
+        }
+        let team_count = team_count_raw as usize;
         for _ in 0..team_count {
-            let player_count = self.next_int()? as usize;
+            let player_count_raw = self.next_int()?;
+            if player_count_raw < 0 {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "negative player count"));
+            }
+            let player_count = player_count_raw as usize;
             let team_name = self.next_line()?;
             let mut players = Vec::with_capacity(player_count);
             for _ in 0..player_count {
@@ -60,7 +69,12 @@ impl<R: BufRead> SqbsParser<R> {
             });
         }
 
-        let game_count = self.next_int()? as usize;
+        let game_count_raw = self.next_int()?;
+        if game_count_raw < 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                format!("invalid game count: {}", game_count_raw)));
+        }
+        let game_count = game_count_raw as usize;
         let mut min_round: u32 = u32::MAX;
         let mut max_round: u32 = 0;
         for _ in 0..game_count {
@@ -157,11 +171,14 @@ impl<R: BufRead> SqbsParser<R> {
         // Optional packets
         if read_packets_info {
             if let Ok(n) = self.next_int() {
-                tournament.packets.clear();
-                for round_offset in 0..n {
-                    let name = self.next_line().unwrap_or_else(|_| String::from("-"));
-                    let round = min_round + round_offset as u32;
-                    tournament.packets.insert(round, name);
+                if n >= 0 {
+                    tournament.packets.clear();
+                    for round_offset in 0..n {
+                        let name = self.next_line().unwrap_or_else(|_| String::from("-"));
+                        if let Some(round) = min_round.checked_add(round_offset as u32) {
+                            tournament.packets.insert(round, name);
+                        }
+                    }
                 }
             }
         }
@@ -169,10 +186,12 @@ impl<R: BufRead> SqbsParser<R> {
         // Optional exhibition
         if read_exhibition_info {
             if let Ok(n) = self.next_int() {
-                for i in 0..(n as usize) {
-                    if let Ok(v) = self.next_int() {
-                        if i < tournament.teams.len() {
-                            tournament.teams[i].exhibition = v != 0;
+                if n >= 0 {
+                    for i in 0..(n as usize) {
+                        if let Ok(v) = self.next_int() {
+                            if i < tournament.teams.len() {
+                                tournament.teams[i].exhibition = v != 0;
+                            }
                         }
                     }
                 }
@@ -362,16 +381,15 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
     for i in 0..4 { writeln!(w, "{}", t.effective_q_value(i))?; }
 
     if has_packets {
-        let min_r = t.min_round();
-        let max_r = t.max_round();
-        if max_r >= min_r {
-            let count = max_r - min_r + 1;
-            writeln!(w, "{}", count)?;
-            for r in min_r..=max_r {
-                writeln!(w, "{}", t.packets.get(&r).map(|s| s.as_str()).unwrap_or("-"))?;
+        match (t.min_round(), t.max_round()) {
+            (Some(min_r), Some(max_r)) if max_r >= min_r => {
+                let count = max_r - min_r + 1;
+                writeln!(w, "{}", count)?;
+                for r in min_r..=max_r {
+                    writeln!(w, "{}", t.packets.get(&r).map(|s| s.as_str()).unwrap_or("-"))?;
+                }
             }
-        } else {
-            writeln!(w, "0")?;
+            _ => { writeln!(w, "0")?; }
         }
     }
 

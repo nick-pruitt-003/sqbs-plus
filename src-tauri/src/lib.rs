@@ -5,7 +5,7 @@ mod reports;
 use models::Tournament;
 use sqbs_format::{SqbsParser, write_sqbs};
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::State;
@@ -55,6 +55,7 @@ fn save_file(path: String, state: State<AppState>) -> Result<Tournament, String>
     let file = File::create(&path).map_err(|e| e.to_string())?;
     let mut writer = BufWriter::new(file);
     write_sqbs(&mut writer, &tournament).map_err(|e| e.to_string())?;
+    writer.flush().map_err(|e: std::io::Error| e.to_string())?;
     *state.tournament.lock().unwrap() = tournament.clone();
     *state.file_path.lock().unwrap() = Some(path);
     Ok(tournament)
@@ -62,9 +63,8 @@ fn save_file(path: String, state: State<AppState>) -> Result<Tournament, String>
 
 #[tauri::command]
 fn update_tournament(tournament: Tournament, state: State<AppState>) -> Tournament {
-    let t = tournament.clone();
-    *state.tournament.lock().unwrap() = tournament;
-    t
+    *state.tournament.lock().unwrap() = tournament.clone();
+    tournament
 }
 
 #[tauri::command]
