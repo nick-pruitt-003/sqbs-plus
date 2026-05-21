@@ -1,5 +1,14 @@
-use crate::models::*;
+use crate::models::{Tournament, Player, Team, Game, PlayerScore, TeamScore};
 use std::io::{self, BufRead, Write};
+
+/// Maximum players (roster slots) per team, including the team name slot.
+/// memberCount in the file format includes the team name, so this bounds
+/// `member_count_raw`; realistic quizbowl rosters are 4–8, never near 100.
+const MAX_MEMBER_COUNT: i64 = 100;
+
+/// Maximum number of divisions in a tournament.
+/// Real tournaments never have more than a handful; 50 is a generous cap.
+const MAX_DIVISIONS: i64 = 50;
 
 pub struct SqbsParser<R: BufRead> {
     reader: R,
@@ -13,11 +22,18 @@ impl<R: BufRead> SqbsParser<R> {
     }
 
     fn load_lines(&mut self) -> io::Result<()> {
+        const MAX_LINES: usize = 100_000;
         let mut collected = Vec::new();
         loop {
             let mut line = String::new();
             let n = self.reader.read_line(&mut line)?;
             if n == 0 { break; }
+            if collected.len() >= MAX_LINES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("file exceeds maximum line limit of {MAX_LINES}"),
+                ));
+            }
             collected.push(line.trim_end_matches(['\r', '\n']).to_string());
         }
         self.lines = collected;
@@ -47,15 +63,20 @@ impl<R: BufRead> SqbsParser<R> {
         let team_count_raw = self.next_int()?;
         if !(0..=100).contains(&team_count_raw) {
             return Err(io::Error::new(io::ErrorKind::InvalidData,
-                format!("invalid team count: {}", team_count_raw)));
+                format!("invalid team count: {team_count_raw}")));
         }
         let team_count = team_count_raw as usize;
         for _ in 0..team_count {
-            let player_count_raw = self.next_int()?;
-            if player_count_raw < 0 {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "negative player count"));
+            // memberCount includes the team name itself, so actual player count = memberCount - 1
+            let member_count_raw = self.next_int()?;
+            if !(1..=MAX_MEMBER_COUNT).contains(&member_count_raw) {
+                return Err(io::Error::new(io::ErrorKind::InvalidData,
+                    format!("member count {member_count_raw} out of range (1–{MAX_MEMBER_COUNT})")));
             }
-            let player_count = player_count_raw as usize;
+            let player_count = (member_count_raw - 1) as usize;
+            if tournament.max_players_per_team < player_count as u32 {
+                tournament.max_players_per_team = player_count as u32;
+            }
             let team_name = self.next_line()?;
             let mut players = Vec::with_capacity(player_count);
             for _ in 0..player_count {
@@ -72,7 +93,7 @@ impl<R: BufRead> SqbsParser<R> {
         let game_count_raw = self.next_int()?;
         if game_count_raw < 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData,
-                format!("invalid game count: {}", game_count_raw)));
+                format!("invalid game count: {game_count_raw}")));
         }
         let game_count = game_count_raw as usize;
         let mut min_round: u32 = u32::MAX;
@@ -84,6 +105,23 @@ impl<R: BufRead> SqbsParser<R> {
             tournament.games.push(game);
         }
         if min_round == u32::MAX { min_round = 1; max_round = 0; }
+
+        // Validate team indices now that team count is known
+        let team_count = tournament.teams.len();
+        for game in &tournament.games {
+            let ai = game.team_a.team_index;
+            let bi = game.team_b.team_index;
+            if ai >= team_count || bi >= team_count {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "game '{}' references out-of-range team index \
+                         (a={ai}, b={bi}, teams={team_count})",
+                        game.game_index
+                    ),
+                ));
+            }
+        }
 
         // Initialize packet slots for every round seen
         if max_round >= min_round {
@@ -147,6 +185,10 @@ impl<R: BufRead> SqbsParser<R> {
         tournament.reports.style         = self.next_line()?;
 
         let num_divisions = self.next_int()?;
+        if !(0..=MAX_DIVISIONS).contains(&num_divisions) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                format!("division count {num_divisions} out of range (0–{MAX_DIVISIONS})")));
+        }
         if num_divisions > 0 {
             for _ in 0..num_divisions {
                 tournament.divisions.push(self.next_line()?);
@@ -210,8 +252,16 @@ impl<R: BufRead> SqbsParser<R> {
 
     fn parse_game(&mut self) -> io::Result<Game> {
         let game_index = self.next_line()?;
-        let team_a_idx = self.next_int()? as usize;
-        let team_b_idx = self.next_int()? as usize;
+        let team_a_raw = self.next_int()?;
+        let team_b_raw = self.next_int()?;
+        if team_a_raw < 0 || team_b_raw < 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid team indices in game '{game_index}': {team_a_raw}, {team_b_raw}"),
+            ));
+        }
+        let team_a_idx = team_a_raw as usize;
+        let team_b_idx = team_b_raw as usize;
         let a_score_str = self.next_line()?;
         let b_score_str = self.next_line()?;
         let tossups_heard = self.next_int()? as u32;
@@ -293,9 +343,10 @@ impl<R: BufRead> SqbsParser<R> {
 pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
     let team_count = t.teams.len();
 
-    writeln!(w, "{}", team_count)?;
+    writeln!(w, "{team_count}")?;
     for team in &t.teams {
-        writeln!(w, "{}", team.players.len())?;
+        // memberCount includes the team name itself, so write players.len() + 1
+        writeln!(w, "{}", team.players.len() + 1)?;
         writeln!(w, "{}", team.name)?;
         for p in &team.players {
             writeln!(w, "{}", p.name)?;
@@ -313,15 +364,15 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
         writeln!(w, "{}", game.round)?;
 
         const BB: i64 = 10000;
-        writeln!(w, "{}", (game.team_a.bonus_heard as i64) + (game.team_a.bb_heard as i64) * BB)?;
-        writeln!(w, "{}", (game.team_a.bonus_points as i64) + (game.team_a.bb_points as i64) * BB)?;
-        writeln!(w, "{}", (game.team_b.bonus_heard as i64) + (game.team_b.bb_heard as i64) * BB)?;
-        writeln!(w, "{}", (game.team_b.bonus_points as i64) + (game.team_b.bb_points as i64) * BB)?;
+        writeln!(w, "{}", i64::from(game.team_a.bonus_heard) + i64::from(game.team_a.bb_heard) * BB)?;
+        writeln!(w, "{}", i64::from(game.team_a.bonus_points) + i64::from(game.team_a.bb_points) * BB)?;
+        writeln!(w, "{}", i64::from(game.team_b.bonus_heard) + i64::from(game.team_b.bb_heard) * BB)?;
+        writeln!(w, "{}", i64::from(game.team_b.bonus_points) + i64::from(game.team_b.bb_points) * BB)?;
 
-        writeln!(w, "{}", if game.overtime { 1 } else { 0 })?;
+        writeln!(w, "{}", i32::from(game.overtime))?;
         writeln!(w, "{}", game.team_a.ot_gets)?;
         writeln!(w, "{}", game.team_b.ot_gets)?;
-        writeln!(w, "{}", if game.forfeit { 1 } else { 0 })?;
+        writeln!(w, "{}", i32::from(game.forfeit))?;
         writeln!(w, "{}", game.team_a.lightning_points)?;
         writeln!(w, "{}", game.team_b.lightning_points)?;
 
@@ -331,26 +382,26 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
         }
     }
 
-    writeln!(w, "{}", if t.track_bonuses { 1 } else { 0 })?;
+    writeln!(w, "{}", i32::from(t.track_bonuses))?;
     writeln!(w, "{}", t.scoring.auto_track)?;
     // Bit 1 always set (signals exhibition section follows); bit 0 = track_power_neg
     writeln!(w, "{}", if t.scoring.track_power_neg { 3i64 } else { 2 })?;
-    writeln!(w, "{}", if t.scoring.track_light_round { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.scoring.track_tuh { 1 } else { 0 })?;
+    writeln!(w, "{}", i32::from(t.scoring.track_light_round))?;
+    writeln!(w, "{}", i32::from(t.scoring.track_tuh))?;
     // Bit 1 always set (signals packet section follows); bit 0 = sort_by_ppg
     writeln!(w, "{}", if t.scoring.sort_by_ppg { 3i64 } else { 2 })?;
     writeln!(w, "{}", t.warn_flags)?;
 
-    writeln!(w, "{}", if t.reports.include_rounds        { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.reports.include_standings     { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.reports.include_individuals   { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.reports.include_games         { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.reports.include_team_detail   { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.reports.include_player_detail { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.reports.include_stat_key      { 1 } else { 0 })?;
-    writeln!(w, "{}", if t.reports.use_style_sheet       { 1 } else { 0 })?;
+    writeln!(w, "{}", i32::from(t.reports.include_rounds))?;
+    writeln!(w, "{}", i32::from(t.reports.include_standings))?;
+    writeln!(w, "{}", i32::from(t.reports.include_individuals))?;
+    writeln!(w, "{}", i32::from(t.reports.include_games))?;
+    writeln!(w, "{}", i32::from(t.reports.include_team_detail))?;
+    writeln!(w, "{}", i32::from(t.reports.include_player_detail))?;
+    writeln!(w, "{}", i32::from(t.reports.include_stat_key))?;
+    writeln!(w, "{}", i32::from(t.reports.use_style_sheet))?;
 
-    writeln!(w, "{}", if t.uses_divisions { 1 } else { 0 })?;
+    writeln!(w, "{}", i32::from(t.uses_divisions))?;
     writeln!(w, "{}", t.sort_method)?;
 
     writeln!(w, "{}", t.name)?;
@@ -369,14 +420,14 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
 
     if t.uses_divisions && !t.divisions.is_empty() {
         writeln!(w, "{}", t.divisions.len())?;
-        for div in &t.divisions { writeln!(w, "{}", div)?; }
-        writeln!(w, "{}", team_count)?;
+        for div in &t.divisions { writeln!(w, "{div}")?; }
+        writeln!(w, "{team_count}")?;
         for team in &t.teams {
             let idx = match &team.division {
-                Some(name) => t.divisions.iter().position(|d| d == name).map(|i| i as i64).unwrap_or(-1),
+                Some(name) => t.divisions.iter().position(|d| d == name).map_or(-1, |i| i as i64),
                 None => -1,
             };
-            writeln!(w, "{}", idx)?;
+            writeln!(w, "{idx}")?;
         }
     } else {
         writeln!(w, "0")?;
@@ -390,18 +441,18 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
     match (t.min_round(), t.max_round()) {
         (Some(min_r), Some(max_r)) if max_r >= min_r && !t.packets.is_empty() => {
             let count = max_r - min_r + 1;
-            writeln!(w, "{}", count)?;
+            writeln!(w, "{count}")?;
             for r in min_r..=max_r {
-                writeln!(w, "{}", t.packets.get(&r).map(|s| s.as_str()).unwrap_or(" "))?;
+                writeln!(w, "{}", t.packets.get(&r).map_or("-", std::string::String::as_str))?;
             }
         }
         _ => { writeln!(w, "0")?; }
     }
 
     // Exhibition: always write team count + per-team flags
-    writeln!(w, "{}", team_count)?;
+    writeln!(w, "{team_count}")?;
     for team in &t.teams {
-        writeln!(w, "{}", if team.exhibition { 1 } else { 0 })?;
+        writeln!(w, "{}", i32::from(team.exhibition))?;
     }
 
     Ok(())
@@ -429,6 +480,7 @@ fn write_player_record<W: Write>(w: &mut W, ps: Option<&PlayerScore>) -> io::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{Game, Player, PlayerScore, Team, TeamScore, Tournament};
     use std::io::{BufReader, Cursor};
 
     fn round_trip(t: &Tournament) -> Tournament {

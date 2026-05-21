@@ -117,8 +117,8 @@
           {/each}
 
           <div class="field-row">
-            <label>Bonus conversion</label>
-            <select value={tournament.scoring.auto_track}
+            <label for="bonus-conversion">Bonus conversion</label>
+            <select id="bonus-conversion" value={tournament.scoring.auto_track}
               onchange={(e) => updateScoring("auto_track", parseInt((e.target as HTMLSelectElement).value))}>
               <option value={0}>Manual</option>
               <option value={1}>Automatic</option>
@@ -263,82 +263,90 @@
 <style>
   .settings { display: flex; flex-direction: column; gap: 0; }
 
+  /* ── Sub tab bar ── */
   .tab-bar {
-    display: flex; gap: 2px; padding: 5px 8px;
-    background: linear-gradient(to bottom, #e0e0e0, #d4d4d4);
-    border-bottom: 1px solid #b8b8b8; border-radius: 6px 6px 0 0;
+    display: flex; gap: 1px; padding: 6px 10px;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
   }
+
   .tab-btn {
-    padding: 3px 14px; border: 1px solid #aaa; border-radius: 4px;
-    background: linear-gradient(to bottom, #f5f5f5, #e0e0e0);
-    cursor: pointer; font-size: 12px; font-weight: 500; color: #333;
+    padding: 4px 14px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer; font-size: 12px; font-weight: 500;
+    color: var(--text-2);
+    transition: background 0.12s, color 0.12s;
   }
-  .tab-btn:hover { background: linear-gradient(to bottom, #fff, #eee); }
+  .tab-btn:hover:not(.active) {
+    background: rgba(128,128,128,0.15);
+    color: var(--text);
+  }
   .tab-btn.active {
-    background: linear-gradient(to bottom, #4a90d9, #2d6db5);
-    color: white; border-color: #1d5a9a;
+    background: var(--accent);
+    color: #fff;
+    border-color: transparent;
   }
 
+  /* ── Content card ── */
   .tab-content {
-    background: white; border: 1px solid #ccc; border-top: none;
-    border-radius: 0 0 6px 6px; padding: 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: var(--shadow-sm);
   }
 
-  .section { padding: 12px 16px; }
+  .section { padding: 14px 18px; }
 
   .section h3 {
-    font-size: 13px; font-weight: 700; margin-bottom: 10px;
-    color: #222; border-bottom: 1px solid #eee; padding-bottom: 4px;
+    font-size: 10px; font-weight: 700;
+    color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.07em;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 5px;
   }
 
-  .hint { font-size: 11px; color: #888; margin-bottom: 8px; }
+  .hint { font-size: 11px; color: var(--text-3); margin-bottom: 10px; line-height: 1.5; }
 
-  .field-grid { display: flex; flex-direction: column; gap: 7px; }
-
+  .field-grid { display: flex; flex-direction: column; gap: 8px; }
   .field-row { display: flex; align-items: center; gap: 8px; }
 
   .field-row > label:not(.cb-label) {
-    width: 180px; font-size: 12px; color: #444; flex-shrink: 0;
+    width: 180px; font-size: 12px; color: var(--text-2); flex-shrink: 0;
   }
 
   .cb-label {
-    display: flex; align-items: center; gap: 6px;
-    cursor: pointer; font-size: 12px; color: #333;
+    display: flex; align-items: center; gap: 7px;
+    cursor: pointer; font-size: 12px; color: var(--text);
+    user-select: none;
   }
-  .cb-label.grayed { color: #aaa; }
-  .cb-label.grayed input { opacity: 0.4; }
+  .cb-label.grayed { color: var(--text-3); }
 
   input[type="number"] { width: 70px; }
   input[type="text"] { width: 200px; }
-  input[type="text"]:disabled, input[type="number"]:disabled { opacity: 0.4; }
-
-  input[type="text"], input[type="number"] {
-    padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px;
-    font-size: 12px; font-family: inherit;
-  }
-  select {
-    padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px;
-    font-size: 12px; font-family: inherit;
-  }
-  input:focus, select:focus { outline: none; border-color: #4a90d9; }
 
   /* ── Packets tab ── */
-  .packets-grid { display: flex; flex-direction: column; gap: 5px; }
-
+  .packets-grid { display: flex; flex-direction: column; gap: 6px; }
   .packet-row { display: flex; align-items: center; gap: 8px; }
-  .round-label { width: 70px; font-size: 12px; color: #555; }
+  .round-label { width: 70px; font-size: 12px; color: var(--text-2); }
   .packet-input { width: 200px; }
 
   .add-round-btn {
-    margin-top: 6px; padding: 4px 12px;
-    background: #4a90d9; color: white; border: none; border-radius: 4px;
+    margin-top: 8px; padding: 4px 12px;
+    background: var(--accent); color: var(--accent-fg);
+    border: none; border-radius: var(--radius-sm);
     cursor: pointer; font-size: 12px; font-weight: 600; align-self: flex-start;
+    transition: background 0.1s;
   }
-  .add-round-btn:hover { background: #3a7bc8; }
+  .add-round-btn:hover { background: var(--accent-hover); }
 
   .rm-btn {
-    background: none; border: none; color: #bbb; cursor: pointer;
-    font-size: 11px; padding: 1px 4px; border-radius: 3px;
+    background: none; border: none; color: var(--text-3);
+    cursor: pointer; font-size: 12px; padding: 2px 5px; border-radius: 3px;
+    transition: background 0.1s, color 0.1s;
   }
-  .rm-btn:hover { background: #ffdddd; color: #c00; }
+  .rm-btn:hover { background: rgba(200,0,0,0.12); color: #c00; }
 </style>

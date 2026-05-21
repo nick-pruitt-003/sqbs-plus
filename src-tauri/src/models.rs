@@ -62,7 +62,7 @@ impl Default for Game {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoringSettings {
-    /// Point values for each tossup category [power, alt_power, normal, neg]
+    /// Point values for each tossup category [power, `alt_power`, normal, neg]
     pub q_values: [i32; 4],
     /// Whether each category is actively tracked (false = disabled, write 0 to file)
     pub q_enabled: [bool; 4],
@@ -183,7 +183,7 @@ impl Tournament {
         self.scoring.auto_track >= 3
     }
 
-    /// Effective q_value for file writing: 0 if disabled, actual value if enabled
+    /// Effective `q_value` for file writing: 0 if disabled, actual value if enabled
     pub fn effective_q_value(&self, i: usize) -> i32 {
         if i >= 4 { return 0; }
         if self.scoring.q_enabled[i] { self.scoring.q_values[i] } else { 0 }

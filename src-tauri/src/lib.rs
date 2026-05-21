@@ -1,3 +1,8 @@
+// Tauri command handlers receive State<T> and String by value — that is required
+// by the #[tauri::command] macro's dependency-injection and JSON deserialization
+// machinery. Clippy's needless_pass_by_value suggestion does not apply here.
+#![allow(clippy::needless_pass_by_value)]
+
 mod models;
 mod sqbs_format;
 mod reports;
@@ -16,16 +21,18 @@ struct AppState {
 }
 
 #[tauri::command]
-fn get_tournament(state: State<AppState>) -> Tournament {
-    state.tournament.lock().unwrap().clone()
+fn get_tournament(state: State<AppState>) -> Result<Tournament, String> {
+    state.tournament.lock()
+        .map(|g| g.clone())
+        .map_err(|e| format!("state corrupted: {e}"))
 }
 
 #[tauri::command]
-fn new_tournament(state: State<AppState>) -> Tournament {
+fn new_tournament(state: State<AppState>) -> Result<Tournament, String> {
     let t = Tournament::default();
-    *state.tournament.lock().unwrap() = t.clone();
-    *state.file_path.lock().unwrap() = None;
-    t
+    *state.tournament.lock().map_err(|e| format!("state corrupted: {e}"))? = t.clone();
+    *state.file_path.lock().map_err(|e| format!("state corrupted: {e}"))? = None;
+    Ok(t)
 }
 
 #[tauri::command]
@@ -79,6 +86,7 @@ fn generate_reports(dir: String, state: State<AppState>) -> Result<Vec<String>, 
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[allow(clippy::missing_panics_doc)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

@@ -1,5 +1,6 @@
-use crate::models::*;
+use crate::models::{ReportSettings, Tournament, Game, TeamScore};
 use std::collections::HashMap;
+use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -163,7 +164,7 @@ fn aggregate_players(t: &Tournament) -> Vec<PlayerAgg> {
                 let tuh = (ps.gp * game.tossups_heard as f32).round() as i32;
                 let entry = PlayerGameEntry {
                     opp_team_index: opp_idx,
-                    gp: ps.gp as f64,
+                    gp: f64::from(ps.gp),
                     q: ps.q,
                     tuh,
                     pts: ps.points,
@@ -175,7 +176,7 @@ fn aggregate_players(t: &Tournament) -> Vec<PlayerAgg> {
                         player_index: ps.player_index,
                         gp: 0.0, q: [0; 4], tuh: 0, pts: 0, games: Vec::new(),
                     });
-                agg.gp += ps.gp as f64;
+                agg.gp += f64::from(ps.gp);
                 for j in 0..4 { agg.q[j] += ps.q[j]; }
                 agg.tuh += tuh;
                 agg.pts += ps.points;
@@ -192,19 +193,19 @@ fn aggregate_players(t: &Tournament) -> Vec<PlayerAgg> {
 // ── Q-value column headers ─────────────────────────────────────────────────
 
 fn q_headers_right(qv: &[i32; 4]) -> String {
-    qv.iter().map(|v| format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", v)).collect()
+    qv.iter().map(|v| format!("  <td ALIGN=RIGHT><B>{v}</B></td>\n")).collect()
 }
 
 fn q_cells_right(q: &[i32; 4]) -> String {
-    q.iter().map(|v| format!("  <td ALIGN=RIGHT>{}</td>\n", v)).collect()
+    q.iter().map(|v| format!("  <td ALIGN=RIGHT>{v}</td>\n")).collect()
 }
 
 fn q_cells_bold(q: &[i32; 4]) -> String {
-    q.iter().map(|v| format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", v)).collect()
+    q.iter().map(|v| format!("  <td ALIGN=RIGHT><B>{v}</B></td>\n")).collect()
 }
 
 fn q_label(qv: &[i32; 4]) -> String {
-    qv.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(" ")
+    qv.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(" ")
 }
 
 // ── Standings ──────────────────────────────────────────────────────────────
@@ -213,11 +214,11 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
     let agg = aggregate_teams(t);
     let mut sorted: Vec<&TeamAgg> = agg.iter().filter(|a| a.games > 0).collect();
     sorted.sort_by(|a, b| {
-        let a_pct = safe_div((a.wins as f64) + (a.ties as f64) * 0.5, a.games as f64);
-        let b_pct = safe_div((b.wins as f64) + (b.ties as f64) * 0.5, b.games as f64);
+        let a_pct = safe_div(f64::from(a.wins) + f64::from(a.ties) * 0.5, f64::from(a.games));
+        let b_pct = safe_div(f64::from(b.wins) + f64::from(b.ties) * 0.5, f64::from(b.games));
         b_pct.partial_cmp(&a_pct).unwrap()
-            .then(safe_div(b.pf as f64, b.games as f64)
-                .partial_cmp(&safe_div(a.pf as f64, a.games as f64)).unwrap())
+            .then(safe_div(f64::from(b.pf), f64::from(b.games))
+                .partial_cmp(&safe_div(f64::from(a.pf), f64::from(a.games))).unwrap())
     });
 
     let bb = t.bouncebacks_enabled();
@@ -252,14 +253,14 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
     }
 
     for (rank, a) in sorted.iter().enumerate() {
-        let team_name = t.teams.get(a.team_index).map(|t| t.name.as_str()).unwrap_or("?");
-        let pct = safe_div((a.wins as f64) + (a.ties as f64) * 0.5, a.games as f64);
-        let ppg = safe_div(a.pf as f64, a.games as f64);
-        let papg = safe_div(a.pa as f64, a.games as f64);
-        let mrg = safe_div((a.pf - a.pa) as f64, a.games as f64);
-        let ppth = safe_div(a.pf as f64, a.tuh as f64);
-        let pn = safe_div(a.q[0] as f64, a.q[2] as f64);
-        let gn = safe_div((a.q[0] + a.q[1] + a.q[3]) as f64, a.q[2] as f64);
+        let team_name = t.teams.get(a.team_index).map_or("?", |t| t.name.as_str());
+        let pct = safe_div(f64::from(a.wins) + f64::from(a.ties) * 0.5, f64::from(a.games));
+        let ppg = safe_div(f64::from(a.pf), f64::from(a.games));
+        let papg = safe_div(f64::from(a.pa), f64::from(a.games));
+        let mrg = safe_div(f64::from(a.pf - a.pa), f64::from(a.games));
+        let ppth = safe_div(f64::from(a.pf), f64::from(a.tuh));
+        let pn = safe_div(f64::from(a.q[0]), f64::from(a.q[2]));
+        let gn = safe_div(f64::from(a.q[0] + a.q[1] + a.q[3]), f64::from(a.q[2]));
 
         body.push_str("</tr><tr>\n");
         body.push_str(&format!(
@@ -269,23 +270,23 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
         body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.wins));
         body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.losses));
         body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.ties));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.3}</td>\n", pct));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.1}</td>\n", ppg));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.1}</td>\n", papg));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.1}</td>\n", mrg));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{pct:.3}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{ppg:.1}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{papg:.1}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{mrg:.1}</td>\n"));
         body.push_str(&q_cells_right(&a.q));
         body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.tuh));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ppth));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", pn));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", gn));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{ppth:.2}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{pn:.2}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{gn:.2}</td>\n"));
         if t.track_bonuses {
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.bh));
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.bp));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(a.bp as f64, a.bh as f64)));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(f64::from(a.bp), f64::from(a.bh))));
             if bb {
                 body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.bbh));
                 body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", a.bbp));
-                body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(a.bbp as f64, a.bbh as f64)));
+                body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(f64::from(a.bbp), f64::from(a.bbh))));
             }
         }
     }
@@ -300,8 +301,8 @@ pub fn individuals_html(t: &Tournament, nav: &Nav) -> String {
     let players = aggregate_players(t);
     let mut sorted: Vec<&PlayerAgg> = players.iter().collect();
     sorted.sort_by(|a, b| {
-        let a_ppg = safe_div(a.pts as f64, a.gp);
-        let b_ppg = safe_div(b.pts as f64, b.gp);
+        let a_ppg = safe_div(f64::from(a.pts), a.gp);
+        let b_ppg = safe_div(f64::from(b.pts), b.gp);
         b_ppg.partial_cmp(&a_ppg).unwrap()
             .then(b.pts.cmp(&a.pts))
             .then(a.team_index.cmp(&b.team_index))
@@ -326,38 +327,32 @@ pub fn individuals_html(t: &Tournament, nav: &Nav) -> String {
     body.push_str("</tr>\n");
 
     for (rank, p) in sorted.iter().enumerate() {
-        let team_name = t.teams.get(p.team_index).map(|t| t.name.as_str()).unwrap_or("?");
+        let team_name = t.teams.get(p.team_index).map_or("?", |t| t.name.as_str());
         let player_name = t.teams.get(p.team_index)
             .and_then(|tm| tm.players.get(p.player_index))
-            .map(|pl| pl.name.as_str())
-            .unwrap_or("?");
-        let ppg = safe_div(p.pts as f64, p.gp);
-        let ptu = safe_div(p.pts as f64, p.tuh as f64);
-        let pn = safe_div(p.q[0] as f64, p.q[2] as f64);
-        let gn = safe_div((p.q[0] + p.q[1] + p.q[3]) as f64, p.q[2] as f64);
+            .map_or("?", |pl| pl.name.as_str());
+        let ppg = safe_div(f64::from(p.pts), p.gp);
+        let ptu = safe_div(f64::from(p.pts), f64::from(p.tuh));
+        let pn = safe_div(f64::from(p.q[0]), f64::from(p.q[2]));
+        let gn = safe_div(f64::from(p.q[0] + p.q[1] + p.q[3]), f64::from(p.q[2]));
         let anchor = format!("{}#p{}_{}", nav.player_detail, p.player_index + 1, p.team_index);
 
         body.push_str("<tr>\n");
         body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n", rank + 1));
-        body.push_str(&format!("  <td ALIGN=LEFT><A HREF={}>{}</A></td>\n", anchor, player_name));
-        body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n", team_name));
+        body.push_str(&format!("  <td ALIGN=LEFT><A HREF={anchor}>{player_name}</A></td>\n"));
+        body.push_str(&format!("  <td ALIGN=LEFT>{team_name}</td>\n"));
         body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", p.gp));
         body.push_str(&q_cells_right(&p.q));
         body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", p.tuh));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ptu));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", pn));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", gn));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{ptu:.2}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{pn:.2}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{gn:.2}</td>\n"));
         body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", p.pts));
-        body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ppg));
+        body.push_str(&format!("  <td ALIGN=RIGHT>{ppg:.2}</td>\n"));
         body.push_str("</tr>\n");
     }
-    body.push_str("</BODY>\n</HTML>\n");
-    // override footer — html_page adds </BODY></HTML> but we need to skip them here
-    // We'll build manually:
-    format!(
-        "<HTML>\n<HEAD>\n<TITLE> Individual Statistics </TITLE>\n{}\n</HEAD>\n<BODY>\n{}{}</BODY>\n</HTML>\n",
-        nav.style_link(), nav.bar(), body.trim_end_matches("</BODY>\n</HTML>\n")
-    )
+    body.push_str("</table>\n");
+    html_page("Individual Statistics", nav, &body)
 }
 
 // ── Scoreboard (games) ─────────────────────────────────────────────────────
@@ -372,19 +367,19 @@ pub fn games_html(t: &Tournament, nav: &Nav) -> String {
     body.push_str("<H1> Scoreboard </H1><P>\n");
 
     for round in &rounds {
-        body.push_str(&format!("<FONT SIZE=+1 COLOR=red>Round {}</FONT><P>\n", round));
+        body.push_str(&format!("<FONT SIZE=+1 COLOR=red>Round {round}</FONT><P>\n"));
         let round_games: Vec<&Game> = t.games.iter().filter(|g| g.round == *round).collect();
 
         for game in &round_games {
-            let a_name = t.teams.get(game.team_a.team_index).map(|t| t.name.as_str()).unwrap_or("?");
-            let b_name = t.teams.get(game.team_b.team_index).map(|t| t.name.as_str()).unwrap_or("?");
+            let a_name = t.teams.get(game.team_a.team_index).map_or("?", |t| t.name.as_str());
+            let b_name = t.teams.get(game.team_b.team_index).map_or("?", |t| t.name.as_str());
             let (winner_name, winner_pts, loser_name, loser_pts) =
                 if game.team_a.total_points >= game.team_b.total_points {
                     (a_name, game.team_a.total_points, b_name, game.team_b.total_points)
                 } else {
                     (b_name, game.team_b.total_points, a_name, game.team_a.total_points)
                 };
-            body.push_str(&format!("<FONT SIZE=+1>{} {}, {} {}</FONT><br>\n", winner_name, winner_pts, loser_name, loser_pts));
+            body.push_str(&format!("<FONT SIZE=+1>{winner_name} {winner_pts}, {loser_name} {loser_pts}</FONT><br>\n"));
             body.push_str("<FONT SIZE=-1>\n");
 
             for (ts, side_name) in [(&game.team_a, a_name), (&game.team_b, b_name)] {
@@ -392,8 +387,7 @@ pub fn games_html(t: &Tournament, nav: &Nav) -> String {
                 for ps in ts.player_scores.iter().flatten() {
                     let pname = t.teams.get(ts.team_index)
                         .and_then(|tm| tm.players.get(ps.player_index))
-                        .map(|p| p.name.as_str())
-                        .unwrap_or("?");
+                        .map_or("?", |p| p.name.as_str());
                     player_parts.push(format!("{} {} {} {} {} {}",
                         pname, ps.q[0], ps.q[1], ps.q[2], ps.q[3], ps.points));
                 }
@@ -404,7 +398,7 @@ pub fn games_html(t: &Tournament, nav: &Nav) -> String {
                 let mut bonus_parts: Vec<String> = Vec::new();
                 for (ts, side_name) in [(&game.team_a, a_name), (&game.team_b, b_name)] {
                     bonus_parts.push(format!("{} {} {} {:.2}", side_name, ts.bonus_heard, ts.bonus_points,
-                        safe_div(ts.bonus_points as f64, ts.bonus_heard as f64)));
+                        safe_div(f64::from(ts.bonus_points), f64::from(ts.bonus_heard))));
                 }
                 body.push_str(&format!("Bonuses: {}<br>\n", bonus_parts.join(", ")));
 
@@ -412,7 +406,7 @@ pub fn games_html(t: &Tournament, nav: &Nav) -> String {
                     let mut bb_parts: Vec<String> = Vec::new();
                     for (ts, side_name) in [(&game.team_a, a_name), (&game.team_b, b_name)] {
                         bb_parts.push(format!("{} {} {} {:.2}", side_name, ts.bb_heard, ts.bb_points,
-                            safe_div(ts.bb_points as f64, ts.bb_heard as f64)));
+                            safe_div(f64::from(ts.bb_points), f64::from(ts.bb_heard))));
                     }
                     body.push_str(&format!("Bonus Bouncebacks: {}<br>\n", bb_parts.join(", ")));
                 }
@@ -458,16 +452,16 @@ pub fn rounds_html(t: &Tournament, nav: &Nav) -> String {
         let mut total_bbp: i64 = 0;
 
         for game in &games {
-            total_pts += (game.team_a.total_points + game.team_b.total_points) as i64;
-            total_tuh += game.tossups_heard as i64;
+            total_pts += i64::from(game.team_a.total_points + game.team_b.total_points);
+            total_tuh += i64::from(game.tossups_heard);
             for ts in [&game.team_a, &game.team_b] {
                 for ps in ts.player_scores.iter().flatten() {
-                    total_player_pts += ps.points as i64;
+                    total_player_pts += i64::from(ps.points);
                 }
-                total_bh += ts.bonus_heard as i64;
-                total_bp += ts.bonus_points as i64;
-                total_bbh += ts.bb_heard as i64;
-                total_bbp += ts.bb_points as i64;
+                total_bh += i64::from(ts.bonus_heard);
+                total_bp += i64::from(ts.bonus_points);
+                total_bbh += i64::from(ts.bb_heard);
+                total_bbp += i64::from(ts.bb_points);
             }
         }
 
@@ -476,12 +470,13 @@ pub fn rounds_html(t: &Tournament, nav: &Nav) -> String {
         let bp_bh = safe_div(total_bp as f64, total_bh as f64);
         let bbp_bbh = safe_div(total_bbp as f64, total_bbh as f64);
 
-        body.push_str(&format!("  <td>{}</td>\n", round));
-        body.push_str(&format!("  <td>{:.2}</td>\n", ppg_team));
-        body.push_str(&format!("  <td>{:.2}</td>\n", tu_pts_tuh));
+        body.push_str("<tr>\n");
+        body.push_str(&format!("  <td>{round}</td>\n"));
+        body.push_str(&format!("  <td>{ppg_team:.2}</td>\n"));
+        body.push_str(&format!("  <td>{tu_pts_tuh:.2}</td>\n"));
         if t.track_bonuses {
-            body.push_str(&format!("  <td>{:.2}</td>\n", bp_bh));
-            if bb { body.push_str(&format!("  <td>{:.2}</td>\n", bbp_bbh)); }
+            body.push_str(&format!("  <td>{bp_bh:.2}</td>\n"));
+            if bb { body.push_str(&format!("  <td>{bbp_bbh:.2}</td>\n")); }
         }
         body.push_str("</tr>\n");
     }
@@ -503,7 +498,7 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
 
     for ti in 0..n {
         let team_name = t.teams[ti].name.as_str();
-        body.push_str(&format!("<P><P><H2><A NAME=t{}>{}</A></H2><P>\n", ti, team_name));
+        body.push_str(&format!("<P><P><H2><A NAME=t{ti}>{team_name}</A></H2><P>\n"));
 
         // Game-by-game table
         body.push_str("<table border=1 width=100%>\n<tr>\n");
@@ -543,7 +538,7 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             .collect();
 
         for (game, my, opp) in &team_games {
-            let opp_name = t.teams.get(opp.team_index).map(|t| t.name.as_str()).unwrap_or("?");
+            let opp_name = t.teams.get(opp.team_index).map_or("?", |t| t.name.as_str());
             let result = if my.total_points > opp.total_points { "W" }
                          else if my.total_points < opp.total_points { "L" } else { "T" };
             let tuh = game.tossups_heard as i32;
@@ -551,9 +546,9 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             for ps in my.player_scores.iter().flatten() {
                 for (a, b) in q.iter_mut().zip(ps.q.iter()) { *a += b; }
             }
-            let ppth = safe_div(my.total_points as f64, tuh as f64);
-            let pn = safe_div(q[0] as f64, q[2] as f64);
-            let gn = safe_div((q[0] + q[1] + q[3]) as f64, q[2] as f64);
+            let ppth = safe_div(f64::from(my.total_points), f64::from(tuh));
+            let pn = safe_div(f64::from(q[0]), f64::from(q[2]));
+            let gn = safe_div(f64::from(q[0] + q[1] + q[3]), f64::from(q[2]));
 
             tot_pf += my.total_points; tot_pa += opp.total_points;
             for j in 0..4 { tot_q[j] += q[j]; }
@@ -562,45 +557,45 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             tot_bbh += my.bb_heard; tot_bbp += my.bb_points;
 
             body.push_str("<tr>\n");
-            body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n  <td ALIGN=RIGHT>{}</td>\n", opp_name, result));
+            body.push_str(&format!("  <td ALIGN=LEFT>{opp_name}</td>\n  <td ALIGN=RIGHT>{result}</td>\n"));
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n  <td ALIGN=RIGHT>{}</td>\n", my.total_points, opp.total_points));
             body.push_str(&q_cells_right(&q));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", tuh));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ppth));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", pn));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", gn));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{tuh}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{ppth:.2}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{pn:.2}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{gn:.2}</td>\n"));
             if t.track_bonuses {
                 body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", my.bonus_heard));
                 body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", my.bonus_points));
-                body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(my.bonus_points as f64, my.bonus_heard as f64)));
+                body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(f64::from(my.bonus_points), f64::from(my.bonus_heard))));
                 if bb {
                     body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", my.bb_heard));
                     body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", my.bb_points));
-                    body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(my.bb_points as f64, my.bb_heard as f64)));
+                    body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(f64::from(my.bb_points), f64::from(my.bb_heard))));
                 }
             }
         }
 
         // Total row — G/N uses (q0+q1)/q2 (matches Mac SQBS behavior)
-        let tot_ppth = safe_div(tot_pf as f64, tot_tuh as f64);
-        let tot_pn = safe_div(tot_q[0] as f64, tot_q[2] as f64);
-        let tot_gn = safe_div((tot_q[0] + tot_q[1]) as f64, tot_q[2] as f64);
+        let tot_ppth = safe_div(f64::from(tot_pf), f64::from(tot_tuh));
+        let tot_pn = safe_div(f64::from(tot_q[0]), f64::from(tot_q[2]));
+        let tot_gn = safe_div(f64::from(tot_q[0] + tot_q[1]), f64::from(tot_q[2]));
         body.push_str("<tr>\n");
         body.push_str("  <td ALIGN=LEFT><B>Total</B></td>\n  <td></td>\n");
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n  <td ALIGN=RIGHT><B>{}</B>\n", tot_pf, tot_pa));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_pf}</B></td>\n  <td ALIGN=RIGHT><B>{tot_pa}</B>\n"));
         body.push_str(&q_cells_bold(&tot_q));
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", tot_tuh));
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", tot_ppth));
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", tot_pn));
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", tot_gn));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_tuh}</B></td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_ppth:.2}</B></td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_pn:.2}</B></td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_gn:.2}</B></td>\n"));
         if t.track_bonuses {
-            body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", tot_bh));
-            body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", tot_bp));
-            body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", safe_div(tot_bp as f64, tot_bh as f64)));
+            body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_bh}</B></td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_bp}</B></td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", safe_div(f64::from(tot_bp), f64::from(tot_bh))));
             if bb {
-                body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", tot_bbh));
-                body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", tot_bbp));
-                body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", safe_div(tot_bbp as f64, tot_bbh as f64)));
+                body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_bbh}</B></td>\n"));
+                body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_bbp}</B></td>\n"));
+                body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", safe_div(f64::from(tot_bbp), f64::from(tot_bbh))));
             }
         }
         body.push_str("</tr>\n</table><P>\n");
@@ -621,23 +616,23 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
 
         let team_players: Vec<&PlayerAgg> = players.iter().filter(|p| p.team_index == ti).collect();
         for p in &team_players {
-            let pname = t.teams[ti].players.get(p.player_index).map(|pl| pl.name.as_str()).unwrap_or("?");
-            let ptu = safe_div(p.pts as f64, p.tuh as f64);
-            let pn = safe_div(p.q[0] as f64, p.q[2] as f64);
-            let gn = safe_div((p.q[0] + p.q[1] + p.q[3]) as f64, p.q[2] as f64);
-            let ppg = safe_div(p.pts as f64, p.gp);
+            let pname = t.teams[ti].players.get(p.player_index).map_or("?", |pl| pl.name.as_str());
+            let ptu = safe_div(f64::from(p.pts), f64::from(p.tuh));
+            let pn = safe_div(f64::from(p.q[0]), f64::from(p.q[2]));
+            let gn = safe_div(f64::from(p.q[0] + p.q[1] + p.q[3]), f64::from(p.q[2]));
+            let ppg = safe_div(f64::from(p.pts), p.gp);
             let anchor = format!("{}#p{}_{}", nav.player_detail, p.player_index + 1, p.team_index);
             body.push_str("<tr>\n");
-            body.push_str(&format!("  <td ALIGN=LEFT><A HREF={}>{}</A></td>\n", anchor, pname));
-            body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n", team_name));
+            body.push_str(&format!("  <td ALIGN=LEFT><A HREF={anchor}>{pname}</A></td>\n"));
+            body.push_str(&format!("  <td ALIGN=LEFT>{team_name}</td>\n"));
             body.push_str(&format!("  <td ALIGN=RIGHT>{:.1}</td>\n", p.gp));
             body.push_str(&q_cells_right(&p.q));
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", p.tuh));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ptu));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", pn));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", gn));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{ptu:.2}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{pn:.2}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{gn:.2}</td>\n"));
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", p.pts));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ppg));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{ppg:.2}</td>\n"));
             body.push_str("</tr>\n");
         }
         body.push_str("</table>\n");
@@ -656,11 +651,10 @@ pub fn player_detail_html(t: &Tournament, nav: &Nav) -> String {
     body.push_str("<H1> Individual Detail </H1><P>\n");
 
     for p in &players {
-        let team_name = t.teams.get(p.team_index).map(|t| t.name.as_str()).unwrap_or("?");
+        let team_name = t.teams.get(p.team_index).map_or("?", |t| t.name.as_str());
         let pname = t.teams.get(p.team_index)
             .and_then(|tm| tm.players.get(p.player_index))
-            .map(|pl| pl.name.as_str())
-            .unwrap_or("?");
+            .map_or("?", |pl| pl.name.as_str());
 
         body.push_str(&format!("<P><P><H2><A NAME=p{}_{}>{}</A>, {}</H2><P>\n",
             p.player_index + 1, p.team_index, pname, team_name));
@@ -676,33 +670,34 @@ pub fn player_detail_html(t: &Tournament, nav: &Nav) -> String {
         body.push_str("</tr>\n");
 
         for ge in &p.games {
-            let opp_name = t.teams.get(ge.opp_team_index).map(|t| t.name.as_str()).unwrap_or("?");
-            let ptu = safe_div(ge.pts as f64, ge.tuh as f64);
-            let pn = safe_div(ge.q[0] as f64, ge.q[2] as f64);
-            let gn = safe_div((ge.q[0] + ge.q[1] + ge.q[3]) as f64, ge.q[2] as f64);
-            body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n", opp_name));
+            let opp_name = t.teams.get(ge.opp_team_index).map_or("?", |t| t.name.as_str());
+            let ptu = safe_div(f64::from(ge.pts), f64::from(ge.tuh));
+            let pn = safe_div(f64::from(ge.q[0]), f64::from(ge.q[2]));
+            let gn = safe_div(f64::from(ge.q[0] + ge.q[1] + ge.q[3]), f64::from(ge.q[2]));
+            body.push_str("<tr>\n");
+            body.push_str(&format!("  <td ALIGN=LEFT>{opp_name}</td>\n"));
             body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ge.gp));
             body.push_str(&q_cells_right(&ge.q));
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", ge.tuh));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", ptu));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", pn));
-            body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", gn));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{ptu:.2}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{pn:.2}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=RIGHT>{gn:.2}</td>\n"));
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", ge.pts));
             body.push_str("</tr>\n");
         }
 
         // Totals row
-        let ptu = safe_div(p.pts as f64, p.tuh as f64);
-        let pn = safe_div(p.q[0] as f64, p.q[2] as f64);
-        let gn = safe_div((p.q[0] + p.q[1] + p.q[3]) as f64, p.q[2] as f64);
+        let ptu = safe_div(f64::from(p.pts), f64::from(p.tuh));
+        let pn = safe_div(f64::from(p.q[0]), f64::from(p.q[2]));
+        let gn = safe_div(f64::from(p.q[0] + p.q[1] + p.q[3]), f64::from(p.q[2]));
         body.push_str("<tr>\n");
         body.push_str("  <td ALIGN=LEFT><B>Total</B></td>\n");
         body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", p.gp));
         body.push_str(&q_cells_bold(&p.q));
         body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", p.tuh));
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", ptu));
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", pn));
-        body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", gn));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{ptu:.2}</B></td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{pn:.2}</B></td>\n"));
+        body.push_str(&format!("  <td ALIGN=RIGHT><B>{gn:.2}</B></td>\n"));
         body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", p.pts));
         body.push_str("</tr>\n");
         body.push_str("</table>\n");
@@ -730,16 +725,16 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
         ("PAPG", "Average number of points scored against the team in a game"),
         ("Mrg", "Team's average margin of victory (if positive) or defeat (if negative)"),
     ] {
-        body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+        body.push_str(&format!("<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n"));
     }
-    body.push_str(&format!("<tr>\n<td>{} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n", ql));
+    body.push_str(&format!("<tr>\n<td>{ql} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n"));
     for (abbr, desc) in &[
         ("TUH", "Total number of toss-ups heard by the team"),
         ("PPTH", "Average number of points scored by the team per toss-up heard"),
         ("P/N", "Ratio of powers to negs"),
         ("G/N", "Ratio of gets (correctly answered questions) to negs"),
     ] {
-        body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+        body.push_str(&format!("<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n"));
     }
     if t.track_bonuses {
         for (abbr, desc) in &[
@@ -747,7 +742,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
             ("BPts", "Total number of points scored by the team on bonus questions"),
             ("P/B", "Average number of points scored by the team on bonus questions"),
         ] {
-            body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+            body.push_str(&format!("<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n"));
         }
         if bb {
             for (abbr, desc) in &[
@@ -755,7 +750,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
                 ("BBPts", "Total number of points scored by the team on bonus bouncebacks"),
                 ("P/BB", "Average number of points scored by the team on bonus bouncebacks"),
             ] {
-                body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+                body.push_str(&format!("<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n"));
             }
         }
     }
@@ -765,7 +760,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
     body.push_str("<H2><A NAME=IndividualStandings>Individual Statistics</A></H2><br>\n");
     body.push_str("<table border=1 width=100%>\n");
     body.push_str("<tr>\n<td>GP</td>\n<td>Number of games in which the player participated</td>\n</tr>\n");
-    body.push_str(&format!("<tr>\n<td>{} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n", ql));
+    body.push_str(&format!("<tr>\n<td>{ql} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n"));
     for (abbr, desc) in &[
         ("TUH", "Total number of toss-ups heard by the player"),
         ("P/TU", "Average number of points scored by the player per toss-up heard"),
@@ -774,7 +769,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
         ("Pts", "Total number of points scored by the player"),
         ("PPG", "Average number of points scored by the player per game"),
     ] {
-        body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+        body.push_str(&format!("<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n"));
     }
     body.push_str("</table><P>\n");
 
@@ -797,16 +792,16 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
         ("PF", "Total number of points scored by the team"),
         ("PA", "Total number of points scored by the opponent"),
     ] {
-        body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+        let _ = write!(body, "<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n");
     }
-    body.push_str(&format!("<tr>\n<td>{} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n", ql));
+    let _ = write!(body, "<tr>\n<td>{ql} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n");
     for (abbr, desc) in &[
         ("TUH", "Total number of toss-ups heard"),
         ("PPTH", "Average number of points scored by the team per toss-up heard"),
         ("P/N", "Ratio of powers to negs"),
         ("G/N", "Ratio of gets (correctly answered questions) to negs"),
     ] {
-        body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+        let _ = write!(body, "<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n");
     }
     if t.track_bonuses {
         for (abbr, desc) in &[
@@ -814,7 +809,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
             ("BPts", "Total number of points scored by the team on bonus questions"),
             ("P/B", "Average number of points scored by the team on bonus questions"),
         ] {
-            body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+            let _ = write!(body, "<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n");
         }
         if bb {
             for (abbr, desc) in &[
@@ -822,7 +817,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
                 ("BBPts", "Total number of points scored by the team on bonus bouncebacks"),
                 ("P/BB", "Average number of points scored by the team on bonus bouncebacks"),
             ] {
-                body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+                let _ = write!(body, "<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n");
             }
         }
     }
@@ -832,7 +827,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
     body.push_str("<H2><A NAME=IndividualDetail>Individual Detail</A></H2><br>\n");
     body.push_str("<table border=1 width=100%>\n");
     body.push_str("<tr>\n<td>GP</td>\n<td>Number of games in which the player participated</td>\n</tr>\n");
-    body.push_str(&format!("<tr>\n<td>{} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n", ql));
+    let _ = write!(body, "<tr>\n<td>{ql} </td>\n<td>Number of toss-ups answered for the corresponding point value (negative point values are for incorrect interrupts)</td>\n</tr>\n");
     for (abbr, desc) in &[
         ("TUH", "Total number of toss-ups heard by the player"),
         ("P/TU", "Average number of points scored by the player per toss-up heard"),
@@ -841,7 +836,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
         ("Pts", "Total number of points scored by the player"),
         ("PPG", "Average number of points scored by the player per game"),
     ] {
-        body.push_str(&format!("<tr>\n<td>{}</td>\n<td>{}</td>\n</tr>\n", abbr, desc));
+        let _ = write!(body, "<tr>\n<td>{abbr}</td>\n<td>{desc}</td>\n</tr>\n");
     }
     body.push_str("</table><P>\n");
 
@@ -865,6 +860,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{Game, Player, PlayerScore, Team, TeamScore, Tournament};
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -1109,7 +1105,9 @@ pub fn generate_all_reports(t: &Tournament, dir: &str) -> io::Result<Vec<String>
 
     let mut written = Vec::new();
     for (path, content) in files {
-        fs::write(&path, content)?;
+        let tmp_path = format!("{path}.tmp");
+        fs::write(&tmp_path, &content)?;
+        fs::rename(&tmp_path, &path)?;
         written.push(path);
     }
     Ok(written)

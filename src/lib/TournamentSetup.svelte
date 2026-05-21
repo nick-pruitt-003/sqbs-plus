@@ -27,7 +27,7 @@
     const n = tournament.max_players_per_team ?? 4;
     const teams = [...tournament.teams, {
       name: `Team ${tournament.teams.length + 1}`,
-      players: Array.from({ length: n }, (_: any, i: number) => ({ name: `P${i + 1}` })),
+      players: Array.from({ length: n }, () => ({ name: "" })),
       division: null,
       exhibition: false,
     }];
@@ -90,8 +90,8 @@
 <div class="setup">
   <div class="top-row">
     <div class="name-col">
-      <label class="field-label">Tournament Name</label>
-      <input class="name-input" type="text"
+      <label class="field-label" for="tournament-name">Tournament Name</label>
+      <input class="name-input" id="tournament-name" type="text"
         value={tournament.name}
         oninput={(e) => update("name", (e.target as HTMLInputElement).value)}
         placeholder="Enter tournament name" />
@@ -206,12 +206,14 @@
               </td>
               <td class="td-team">
                 <input type="text" class="cell-team" value={team.name}
+                  onfocus={(e) => (e.target as HTMLInputElement).select()}
                   oninput={(e) => updateTeamField(ti, "name", (e.target as HTMLInputElement).value)} />
               </td>
               {#each playerCols as pi}
                 <td class="td-player">
                   <input type="text" class="cell-player"
                     value={team.players[pi]?.name ?? ""}
+                    placeholder={`Player ${pi + 1}`}
                     oninput={(e) => updatePlayerName(ti, pi, (e.target as HTMLInputElement).value)} />
                 </td>
               {/each}
@@ -231,92 +233,174 @@
 <style>
   .setup { display: flex; flex-direction: column; gap: 10px; }
 
+  /* ── Top options card ── */
   .top-row {
-    display: flex; gap: 12px; align-items: flex-start;
-    background: white; border: 1px solid #ccc; border-radius: 6px; padding: 10px 12px;
+    display: flex; gap: 16px; align-items: flex-start;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: var(--shadow-sm);
   }
 
-  .name-col { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
-  .field-label { font-size: 11px; font-weight: 600; color: #555; }
-  .name-input { font-size: 13px; padding: 4px 6px; width: 200px; }
+  .name-col { display: flex; flex-direction: column; gap: 5px; min-width: 200px; }
 
-  .options-panel { display: flex; flex-wrap: wrap; gap: 14px; flex: 1; }
-  .options-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+  .field-label {
+    font-size: 11px; font-weight: 600;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .name-input { font-size: 13px; padding: 5px 7px; width: 200px; }
+
+  .options-panel { display: flex; flex-wrap: wrap; gap: 18px; flex: 1; }
+  .options-group { display: flex; flex-direction: column; gap: 5px; min-width: 145px; }
 
   .group-title {
-    font-size: 11px; font-weight: 700; color: #444;
-    border-bottom: 1px solid #e0e0e0; padding-bottom: 2px; margin-bottom: 2px;
+    font-size: 10px; font-weight: 700;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 4px;
+    margin-bottom: 1px;
     white-space: nowrap;
   }
 
-  .q-row { display: flex; align-items: center; gap: 4px; }
-  .q-val { width: 52px; font-size: 12px; text-align: right; }
-  .q-val:disabled { opacity: 0.4; }
+  .q-row { display: flex; align-items: center; gap: 5px; }
+  .q-val { width: 52px; text-align: right; }
 
   .cb-row {
-    display: flex; align-items: center; gap: 5px;
-    font-size: 12px; color: #333; cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text); cursor: pointer; white-space: nowrap;
+    user-select: none;
   }
 
-  .seats-row { display: flex; align-items: center; gap: 6px; }
-  .seats-input { width: 48px; font-size: 13px; text-align: center; }
-  .seats-hint { font-size: 10px; color: #888; line-height: 1.3; }
+  .seats-row { display: flex; align-items: center; gap: 7px; }
+  .seats-input { width: 48px; text-align: center; }
+  .seats-hint { font-size: 10px; color: var(--text-3); line-height: 1.4; }
 
-  /* ── Divisions ── */
+  /* ── Section cards ── */
   .div-section {
-    background: white; border: 1px solid #ccc; border-radius: 6px; padding: 8px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 9px 12px;
+    box-shadow: var(--shadow-sm);
   }
-  .section-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-  .section-title { font-size: 12px; font-weight: 700; color: #333; }
-  .div-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .div-chip {
-    display: flex; align-items: center; gap: 2px;
-    background: #e8f0fe; border: 1px solid #a8c0f0; border-radius: 4px; padding: 2px 4px;
-  }
-  .div-chip input { width: 100px; font-size: 12px; border: none; background: transparent; }
-  .div-chip input:focus { outline: 1px solid #4a90d9; border-radius: 2px; background: white; }
-  .empty-hint { font-size: 11px; color: #999; font-style: italic; }
 
-  /* ── Teams grid ── */
-  .teams-section { background: white; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
-  .teams-hdr { padding: 6px 10px; background: #e8e8e8; border-bottom: 1px solid #ccc; margin-bottom: 0; }
+  .section-hdr {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-size: 11px; font-weight: 700;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .div-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  .div-chip {
+    display: flex; align-items: center; gap: 3px;
+    background: rgba(0, 113, 227, 0.1);
+    border: 1px solid rgba(0, 113, 227, 0.3);
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+  }
+
+  .div-chip input {
+    width: 100px; font-size: 12px;
+    border: none !important; background: transparent !important;
+    box-shadow: none !important; padding: 0 !important;
+    color: var(--text);
+  }
+
+  .empty-hint { font-size: 11px; color: var(--text-3); font-style: italic; }
+
+  /* ── Teams section ── */
+  .teams-section {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .teams-hdr {
+    padding: 7px 12px;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+  }
+
   .grid-scroll { overflow-x: auto; }
 
   .team-grid { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 500px; }
+
   .team-grid th {
-    background: #f0f0f0; border-bottom: 2px solid #ccc;
-    padding: 4px 6px; text-align: left; font-weight: 600; color: #555; white-space: nowrap;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    padding: 5px 7px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text-2);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
-  .team-grid td { border-bottom: 1px solid #f0f0f0; padding: 2px 4px; vertical-align: middle; }
-  tr:hover td { background: #f8f8f8; }
-  tr.exh td { background: #fffbe6; }
+
+  .team-grid td {
+    border-bottom: 1px solid var(--border-light);
+    padding: 3px 5px;
+    vertical-align: middle;
+  }
+
+  tr:hover td { background: rgba(128,128,128,0.06); }
+  tr.exh td { background: rgba(255, 200, 0, 0.07); }
 
   .th-div { width: 90px; }
-  .th-exh, .td-exh { width: 30px; text-align: center; }
+  .th-exh, .td-exh { width: 32px; text-align: center; }
   .th-team { min-width: 100px; }
   .th-player { min-width: 90px; }
   .th-del { width: 28px; }
 
-  .cell-team { width: 100%; font-weight: 600; font-size: 12px; }
-  .cell-player { width: 100%; font-size: 12px; }
-
-  input[type="text"], input[type="number"], select {
-    padding: 2px 5px; border: 1px solid #ccc; border-radius: 3px;
-    font-size: 12px; font-family: inherit;
+  .cell-team, .cell-player {
+    width: 100%;
+    background: transparent;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    font-size: 12px;
   }
-  input:focus, select:focus { outline: none; border-color: #4a90d9; }
+  .cell-team { font-weight: 600; }
+  .cell-team:focus, .cell-player:focus {
+    background: var(--bg-surface) !important;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2) !important;
+  }
 
+  /* ── Buttons ── */
   .add-btn {
-    padding: 3px 10px; background: #4a90d9; color: white;
-    border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;
+    padding: 4px 11px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none; border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 12px; font-weight: 600;
+    transition: background 0.1s;
   }
-  .add-btn:hover { background: #3a7bc8; }
+  .add-btn:hover { background: var(--accent-hover); }
 
   .rm-btn {
-    background: none; border: none; color: #bbb; cursor: pointer;
-    font-size: 11px; padding: 1px 4px; border-radius: 3px;
+    background: none; border: none;
+    color: var(--text-3);
+    cursor: pointer; font-size: 12px; padding: 2px 5px; border-radius: 3px;
+    line-height: 1;
+    transition: background 0.1s, color 0.1s;
   }
-  .rm-btn:hover { background: #ffdddd; color: #c00; }
+  .rm-btn:hover { background: rgba(200,0,0,0.12); color: #c00; }
 
-  .empty-state { padding: 20px; color: #999; text-align: center; }
+  .empty-state { padding: 20px; color: var(--text-3); text-align: center; font-style: italic; }
 </style>

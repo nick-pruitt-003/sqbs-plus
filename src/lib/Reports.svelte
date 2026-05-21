@@ -234,49 +234,92 @@
 </div>
 
 <style>
-  .reports { display: flex; flex-direction: column; gap: 16px; }
+  .reports { display: flex; flex-direction: column; gap: 14px; }
 
+  /* ── Section cards ── */
   .report-section {
-    background: white; border: 1px solid #ccc; border-radius: 6px; overflow: hidden;
-  }
-  .report-section h3 {
-    padding: 8px 12px; background: #e8e8e8; border-bottom: 1px solid #ccc;
-    font-size: 12px; font-weight: 600;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
   }
 
-  .generate-area { padding: 12px; display: flex; align-items: center; gap: 12px; }
-  .generate-btn {
-    padding: 6px 16px; background: #4a90d9; color: white;
-    border: none; border-radius: 5px; cursor: pointer; font-size: 12px;
-    font-weight: 600; white-space: nowrap;
+  .report-section h3 {
+    padding: 7px 12px;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700;
+    color: var(--text-2);
+    text-transform: uppercase; letter-spacing: 0.07em;
   }
-  .generate-btn:hover:not(:disabled) { background: #3a7bc8; }
-  .generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-  .hint { font-size: 11px; color: #888; }
+
+  /* ── Generate button ── */
+  .generate-area { padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
+
+  .generate-btn {
+    padding: 6px 16px;
+    background: var(--accent); color: var(--accent-fg);
+    border: none; border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;
+    transition: background 0.1s;
+  }
+  .generate-btn:hover:not(:disabled) { background: var(--accent-hover); }
+  .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .hint { font-size: 11px; color: var(--text-3); line-height: 1.5; }
 
   .result {
-    margin: 0 12px 12px; padding: 6px 10px; border-radius: 4px; font-size: 11px;
-    background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9;
+    margin: 0 14px 12px; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 11px;
+    background: rgba(46, 125, 50, 0.1); color: #2e7d32; border: 1px solid rgba(46, 125, 50, 0.25);
   }
-  .result.error { background: #ffebee; color: #c62828; border-color: #ffcdd2; }
+  .result.error {
+    background: rgba(198, 40, 40, 0.1); color: #c62828; border-color: rgba(198, 40, 40, 0.25);
+  }
 
+  @media (prefers-color-scheme: dark) {
+    .result { color: #69c469; }
+    .result.error { color: #f07070; }
+  }
+
+  /* ── Tables ── */
   .table-scroll { overflow-x: auto; }
 
   .standings-table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
+
   .standings-table th {
-    padding: 4px 7px; text-align: right; background: #f0f0f0;
-    border-bottom: 1px solid #ddd; font-weight: 600; color: #444;
+    padding: 5px 8px; text-align: right;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    font-weight: 700; font-size: 10px;
+    color: var(--text-2);
+    text-transform: uppercase; letter-spacing: 0.04em;
   }
-  .standings-table td { padding: 3px 7px; border-bottom: 1px solid #f0f0f0; text-align: right; }
-  tr.even td { background: #fafafa; }
-  tr.exh td { background: #fffbe6; }
-  tr.forfeit td { color: #999; }
+
+  .standings-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-light);
+    text-align: right;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  tr.even td { background: rgba(128,128,128,0.04); }
+  tr.exh td { background: rgba(255,200,0,0.06); }
+  tr.forfeit td { color: var(--text-3); }
+  tr:hover td { background: rgba(0, 113, 227, 0.05); }
 
   .th-team, .td-team { text-align: left; }
-  .td-rank { color: #666; width: 24px; }
-  .td-score { font-weight: 600; text-align: center; }
-  td.pos { color: #2a7d2a; }
-  td.neg { color: #c62828; }
+  .td-rank { color: var(--text-3); width: 28px; }
+  .td-score { font-weight: 700; text-align: center; }
+  td.pos { color: #2a9d2a; }
+  td.neg { color: #d03030; }
 
-  .empty-state { padding: 20px; color: #999; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    td.pos { color: #5ec45e; }
+    td.neg { color: #f07070; }
+  }
+
+  .empty-state {
+    padding: 24px; color: var(--text-3); text-align: center; font-style: italic; font-size: 12px;
+  }
 </style>
