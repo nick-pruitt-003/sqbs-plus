@@ -46,6 +46,7 @@
 
   function addGame() {
     if (tournament.teams.length < 2) return;
+    if (newTeamA === newTeamB) return;
     const gameIndex = String(total + 1);
     const newGame = {
       game_index: gameIndex,
@@ -160,7 +161,7 @@
     <select bind:value={newTeamB}>
       {#each tournament.teams as t, i}<option value={i}>{t.name}</option>{/each}
     </select>
-    <button class="add-btn" onclick={addGame} disabled={tournament.teams.length < 2}>Add Game</button>
+    <button class="add-btn" onclick={addGame} disabled={tournament.teams.length < 2 || newTeamA === newTeamB}>Add Game</button>
   </div>
 
   <!-- ── Score entry ────────────────────────────────────────────────────────── -->
@@ -176,8 +177,7 @@
             <select value={ti}
               onchange={(e) => {
                 const newTi = parseInt((e.target as HTMLSelectElement).value);
-                const newSide = { ...side, team_index: newTi };
-                draft = { ...draft, [sideKey]: newSide };
+                draft = { ...draft, [sideKey]: blankTeamScore(newTi) };
               }}>
               {#each tournament.teams as t, i}<option value={i}>{t.name}</option>{/each}
             </select>

@@ -119,7 +119,7 @@
           <div class="field-row">
             <label for="bonus-conversion">Bonus conversion</label>
             <select id="bonus-conversion" value={tournament.scoring.auto_track}
-              onchange={(e) => updateScoring("auto_track", parseInt((e.target as HTMLSelectElement).value))}>
+              onchange={(e) => updateScoring("auto_track", parseInt((e.target as HTMLSelectElement).value) || 0)}>
               <option value={0}>Manual</option>
               <option value={1}>Automatic</option>
               <option value={2}>Combo</option>
@@ -248,7 +248,7 @@
               <input type="text" class="packet-input"
                 value={tournament.packets[round] ?? "-"}
                 oninput={(e) => setPacket(round, (e.target as HTMLInputElement).value)} />
-              <button class="rm-btn" onclick={() => removePacketRound(round)}>✕</button>
+              <button class="rm-btn" aria-label="Remove round" onclick={() => removePacketRound(round)}>✕</button>
             </div>
           {:else}
             <p class="hint">No rounds defined yet. Games must be entered first, or add manually below.</p>

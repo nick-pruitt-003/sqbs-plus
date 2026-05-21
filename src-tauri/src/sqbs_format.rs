@@ -90,10 +90,13 @@ impl<R: BufRead> SqbsParser<R> {
             });
         }
 
+        /// Maximum number of games in a tournament file.
+        /// A 100-team round-robin has 4950 games; 10 000 is a generous cap.
+        const MAX_GAME_COUNT: i64 = 10_000;
         let game_count_raw = self.next_int()?;
-        if game_count_raw < 0 {
+        if !(0..=MAX_GAME_COUNT).contains(&game_count_raw) {
             return Err(io::Error::new(io::ErrorKind::InvalidData,
-                format!("invalid game count: {game_count_raw}")));
+                format!("game count {game_count_raw} out of range (0–{MAX_GAME_COUNT})")));
         }
         let game_count = game_count_raw as usize;
         let mut min_round: u32 = u32::MAX;

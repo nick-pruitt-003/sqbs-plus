@@ -9,6 +9,13 @@ fn safe_div(a: f64, b: f64) -> f64 {
     if b == 0.0 { 0.0 } else { a / b }
 }
 
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+     .replace('<', "&lt;")
+     .replace('>', "&gt;")
+     .replace('"', "&quot;")
+}
+
 pub(crate) struct Nav {
     standings: String,
     individuals: String,
@@ -268,6 +275,7 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
     let mut body = String::new();
     body.push_str(&format!("<H1>{} Team Standings </H1><P>\n", t.name));
     body.push_str("<table border=1 width=100%>\n");
+    body.push_str("<tr>\n");
     body.push_str("  <td ALIGN=LEFT><B>Rank</B></td>\n");
     body.push_str("  <td ALIGN=LEFT><B>Team</B></td>\n");
     body.push_str("  <td ALIGN=RIGHT><B>W</B></td>\n");
@@ -292,9 +300,10 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
             body.push_str("  <td ALIGN=RIGHT><B>P/BB</B></td>\n");
         }
     }
+    body.push_str("</tr>\n");
 
     for (rank, a) in sorted.iter().enumerate() {
-        let team_name = t.teams.get(a.team_index).map_or("?", |t| t.name.as_str());
+        let team_name = escape_html(t.teams.get(a.team_index).map_or("?", |t| t.name.as_str()));
         let pct = safe_div(f64::from(a.wins) + f64::from(a.ties) * 0.5, f64::from(a.games));
         let ppg = safe_div(f64::from(a.pf), f64::from(a.games));
         let papg = safe_div(f64::from(a.pa), f64::from(a.games));
@@ -303,7 +312,7 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
         let pn = pn_str(&a.q, qv, qe);
         let gn = gn_str(&a.q, qv, qe);
 
-        body.push_str("</tr><tr>\n");
+        body.push_str("<tr>\n");
         body.push_str(&format!(
             "  <td ALIGN=LEFT>{}</td>  <td ALIGN=LEFT>\n<A HREF={}#t{}>{}</A></td>\n",
             rank + 1, nav.team_detail, a.team_index, team_name
@@ -330,8 +339,9 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
                 body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", safe_div(f64::from(a.bbp), f64::from(a.bbh))));
             }
         }
+        body.push_str("</tr>\n");
     }
-    body.push_str("</tr></table>\n");
+    body.push_str("</table>\n");
 
     html_page(&format!("{} Team Standings ", t.name), nav, &body)
 }
@@ -370,9 +380,9 @@ pub fn individuals_html(t: &Tournament, nav: &Nav) -> String {
 
     for (rank, p) in sorted.iter().enumerate() {
         let team_name = t.teams.get(p.team_index).map_or("?", |t| t.name.as_str());
-        let player_name = t.teams.get(p.team_index)
+        let player_name = escape_html(t.teams.get(p.team_index)
             .and_then(|tm| tm.players.get(p.player_index))
-            .map_or("?", |pl| pl.name.as_str());
+            .map_or("?", |pl| pl.name.as_str()));
         let ppg = safe_div(f64::from(p.pts), p.gp);
         let ptu = safe_div(f64::from(p.pts), f64::from(p.tuh));
         let pn = pn_str(&p.q, qv, qe);
@@ -382,7 +392,7 @@ pub fn individuals_html(t: &Tournament, nav: &Nav) -> String {
         body.push_str("<tr>\n");
         body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n", rank + 1));
         body.push_str(&format!("  <td ALIGN=LEFT><A HREF={anchor}>{player_name}</A></td>\n"));
-        body.push_str(&format!("  <td ALIGN=LEFT>{team_name}</td>\n"));
+        body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n", escape_html(team_name)));
         body.push_str(&format!("  <td ALIGN=RIGHT>{:.2}</td>\n", p.gp));
         body.push_str(&q_cells_right(&p.q, qe));
         body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", p.tuh));
@@ -420,23 +430,23 @@ pub fn games_html(t: &Tournament, nav: &Nav) -> String {
         let round_games: Vec<&Game> = t.games.iter().filter(|g| g.round == *round).collect();
 
         for game in &round_games {
-            let a_name = t.teams.get(game.team_a.team_index).map_or("?", |t| t.name.as_str());
-            let b_name = t.teams.get(game.team_b.team_index).map_or("?", |t| t.name.as_str());
+            let a_name = escape_html(t.teams.get(game.team_a.team_index).map_or("?", |t| t.name.as_str()));
+            let b_name = escape_html(t.teams.get(game.team_b.team_index).map_or("?", |t| t.name.as_str()));
             let (winner_name, winner_pts, loser_name, loser_pts) =
                 if game.team_a.total_points >= game.team_b.total_points {
-                    (a_name, game.team_a.total_points, b_name, game.team_b.total_points)
+                    (a_name.as_str(), game.team_a.total_points, b_name.as_str(), game.team_b.total_points)
                 } else {
-                    (b_name, game.team_b.total_points, a_name, game.team_a.total_points)
+                    (b_name.as_str(), game.team_b.total_points, a_name.as_str(), game.team_a.total_points)
                 };
             body.push_str(&format!("<FONT SIZE=+1>{winner_name} {winner_pts}, {loser_name} {loser_pts}</FONT><br>\n"));
             body.push_str("<FONT SIZE=-1>\n");
 
-            for (ts, side_name) in [(&game.team_a, a_name), (&game.team_b, b_name)] {
+            for (ts, side_name) in [(&game.team_a, a_name.as_str()), (&game.team_b, b_name.as_str())] {
                 let mut player_parts: Vec<String> = Vec::new();
                 for ps in ts.player_scores.iter().flatten() {
-                    let pname = t.teams.get(ts.team_index)
+                    let pname = escape_html(t.teams.get(ts.team_index)
                         .and_then(|tm| tm.players.get(ps.player_index))
-                        .map_or("?", |p| p.name.as_str());
+                        .map_or("?", |p| p.name.as_str()));
                     player_parts.push(format!("{} {} {}", pname, q_score_inline(&ps.q, qe), ps.points));
                 }
                 body.push_str(&format!("{}: {}<br>\n", side_name, player_parts.join(", ")));
@@ -444,7 +454,7 @@ pub fn games_html(t: &Tournament, nav: &Nav) -> String {
 
             if t.track_bonuses {
                 let mut bonus_parts: Vec<String> = Vec::new();
-                for (ts, side_name) in [(&game.team_a, a_name), (&game.team_b, b_name)] {
+                for (ts, side_name) in [(&game.team_a, a_name.as_str()), (&game.team_b, b_name.as_str())] {
                     bonus_parts.push(format!("{} {} {} {:.2}", side_name, ts.bonus_heard, ts.bonus_points,
                         safe_div(f64::from(ts.bonus_points), f64::from(ts.bonus_heard))));
                 }
@@ -452,7 +462,7 @@ pub fn games_html(t: &Tournament, nav: &Nav) -> String {
 
                 if bb {
                     let mut bb_parts: Vec<String> = Vec::new();
-                    for (ts, side_name) in [(&game.team_a, a_name), (&game.team_b, b_name)] {
+                    for (ts, side_name) in [(&game.team_a, a_name.as_str()), (&game.team_b, b_name.as_str())] {
                         bb_parts.push(format!("{} {} {} {:.2}", side_name, ts.bb_heard, ts.bb_points,
                             safe_div(f64::from(ts.bb_points), f64::from(ts.bb_heard))));
                     }
@@ -546,7 +556,8 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
     body.push_str(&format!("<H1>{} Team Details </H1><P>\n", t.name));
 
     for ti in 0..n {
-        let team_name = t.teams[ti].name.as_str();
+        let team_name = escape_html(t.teams[ti].name.as_str());
+        let team_name = team_name.as_str();
         body.push_str(&format!("<P><P><H2><A NAME=t{ti}>{team_name}</A></H2><P>\n"));
 
         // Game-by-game table
@@ -588,7 +599,7 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             .collect();
 
         for (game, my, opp) in &team_games {
-            let opp_name = t.teams.get(opp.team_index).map_or("?", |t| t.name.as_str());
+            let opp_name = escape_html(t.teams.get(opp.team_index).map_or("?", |t| t.name.as_str()));
             let result = if my.total_points > opp.total_points { "W" }
                          else if my.total_points < opp.total_points { "L" } else { "T" };
             let tuh = game.tossups_heard as i32;
@@ -670,7 +681,7 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
 
         let team_players: Vec<&PlayerAgg> = players.iter().filter(|p| p.team_index == ti).collect();
         for p in &team_players {
-            let pname = t.teams[ti].players.get(p.player_index).map_or("?", |pl| pl.name.as_str());
+            let pname = escape_html(t.teams[ti].players.get(p.player_index).map_or("?", |pl| pl.name.as_str()));
             let ptu = safe_div(f64::from(p.pts), f64::from(p.tuh));
             let pn = pn_str(&p.q, qv, qe);
             let gn = gn_str(&p.q, qv, qe);
@@ -678,7 +689,7 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             let anchor = format!("{}#p{}_{}", nav.player_detail, p.player_index + 1, p.team_index);
             body.push_str("<tr>\n");
             body.push_str(&format!("  <td ALIGN=LEFT><A HREF={anchor}>{pname}</A></td>\n"));
-            body.push_str(&format!("  <td ALIGN=LEFT>{team_name}</td>\n"));
+            body.push_str(&format!("  <td ALIGN=LEFT>{}</td>\n", escape_html(team_name)));
             body.push_str(&format!("  <td ALIGN=RIGHT>{:.1}</td>\n", p.gp));
             body.push_str(&q_cells_right(&p.q, qe));
             body.push_str(&format!("  <td ALIGN=RIGHT>{}</td>\n", p.tuh));
@@ -706,10 +717,10 @@ pub fn player_detail_html(t: &Tournament, nav: &Nav) -> String {
     body.push_str(&format!("<H1>{} Individual Detail </H1><P>\n", t.name));
 
     for p in &players {
-        let team_name = t.teams.get(p.team_index).map_or("?", |t| t.name.as_str());
-        let pname = t.teams.get(p.team_index)
+        let team_name = escape_html(t.teams.get(p.team_index).map_or("?", |t| t.name.as_str()));
+        let pname = escape_html(t.teams.get(p.team_index)
             .and_then(|tm| tm.players.get(p.player_index))
-            .map_or("?", |pl| pl.name.as_str());
+            .map_or("?", |pl| pl.name.as_str()));
 
         body.push_str(&format!("<P><P><H2><A NAME=p{}_{}>{}</A>, {}</H2><P>\n",
             p.player_index + 1, p.team_index, pname, team_name));
@@ -1145,11 +1156,32 @@ mod tests {
     }
 }
 
+// ── Path traversal guard ───────────────────────────────────────────────────
+
+fn validate_report_name(name: &str) -> io::Result<()> {
+    let p = Path::new(name);
+    if p.is_absolute() || p.components().count() != 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("report filename '{name}' must be a plain filename with no path separators"),
+        ));
+    }
+    Ok(())
+}
+
 // ── Main entry point ───────────────────────────────────────────────────────
 
 pub fn generate_all_reports(t: &Tournament, dir: &str) -> io::Result<Vec<String>> {
     let base = &t.reports.base_name;
     let nav = Nav::new(base, &t.reports);
+
+    // Validate all filenames before generating any content
+    for name in &[
+        &nav.standings, &nav.individuals, &nav.games,
+        &nav.rounds, &nav.team_detail, &nav.player_detail, &nav.stat_key,
+    ] {
+        validate_report_name(name)?;
+    }
 
     let files: Vec<(String, String)> = vec![
         (Path::new(dir).join(&nav.standings).to_string_lossy().to_string(),  standings_html(t, &nav)),

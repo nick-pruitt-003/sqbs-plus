@@ -11,49 +11,78 @@
   let activeTab = $state<Tab>("setup");
   let tournament = $state<any>(null);
   let isDirty = $state(false);
+  let lastError = $state<string | null>(null);
+
+  // Tracks the in-flight update_tournament promise so saveFile can await it
+  let pendingUpdate: Promise<any> | null = null;
 
   async function newTournament() {
-    tournament = await invoke("new_tournament");
-    isDirty = false;
+    try {
+      tournament = await invoke("new_tournament");
+      isDirty = false;
+      lastError = null;
+    } catch (e: any) {
+      lastError = String(e);
+    }
   }
 
   async function openFile() {
-    const path = await open({
-      filters: [{ name: "SQBS Tournament", extensions: ["sqbs", "qzx"] }],
-    });
-    if (path) {
-      tournament = await invoke("open_file", { path });
-      isDirty = false;
+    try {
+      const path = await open({
+        filters: [{ name: "SQBS Tournament", extensions: ["sqbs", "qzx"] }],
+      });
+      if (path) {
+        tournament = await invoke("open_file", { path });
+        isDirty = false;
+        lastError = null;
+      }
+    } catch (e: any) {
+      lastError = String(e);
     }
   }
 
   async function saveFile() {
-    let path: string | null = await invoke("get_file_path");
-    if (!path) {
-      path = await save({
-        filters: [{ name: "SQBS Tournament", extensions: ["sqbs"] }],
-      });
-    }
-    if (path) {
-      tournament = await invoke("save_file", { path });
-      isDirty = false;
+    try {
+      // Ensure any in-flight tournament update is committed before saving
+      if (pendingUpdate) await pendingUpdate;
+      let path: string | null = await invoke("get_file_path");
+      if (!path) {
+        path = await save({
+          filters: [{ name: "SQBS Tournament", extensions: ["sqbs"] }],
+        });
+      }
+      if (path) {
+        tournament = await invoke("save_file", { path });
+        isDirty = false;
+        lastError = null;
+      }
+    } catch (e: any) {
+      lastError = String(e);
     }
   }
 
   async function saveAs() {
-    const path = await save({
-      filters: [{ name: "SQBS Tournament", extensions: ["sqbs"] }],
-    });
-    if (path) {
-      tournament = await invoke("save_file", { path });
-      isDirty = false;
+    try {
+      // Ensure any in-flight tournament update is committed before saving
+      if (pendingUpdate) await pendingUpdate;
+      const path = await save({
+        filters: [{ name: "SQBS Tournament", extensions: ["sqbs"] }],
+      });
+      if (path) {
+        tournament = await invoke("save_file", { path });
+        isDirty = false;
+        lastError = null;
+      }
+    } catch (e: any) {
+      lastError = String(e);
     }
   }
 
   function onTournamentChanged(updated: any) {
     tournament = updated;
     isDirty = true;
-    invoke("update_tournament", { tournament: updated });
+    pendingUpdate = invoke("update_tournament", { tournament: updated });
+    pendingUpdate.catch((e: any) => { lastError = String(e); });
   }
 
   newTournament();
@@ -108,6 +137,13 @@
       <button class="tab-btn" class:active={activeTab === "settings"} onclick={() => (activeTab = "settings")}>Settings</button>
     </div>
   </nav>
+
+  {#if lastError}
+    <div class="error-banner" role="alert">
+      <span>{lastError}</span>
+      <button class="error-dismiss" onclick={() => (lastError = null)}>✕</button>
+    </div>
+  {/if}
 
   <main class="content">
     {#if tournament}
@@ -342,6 +378,25 @@
     background: var(--tab-active-bg);
     color: var(--tab-active-fg);
     box-shadow: var(--shadow-sm);
+  }
+
+  /* ── Error banner ──────────────────────────────────────────────────────── */
+  .error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    background: rgba(198, 40, 40, 0.12);
+    border-bottom: 1px solid rgba(198, 40, 40, 0.3);
+    font-size: 12px;
+    color: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    .error-banner { color: #f07070; background: rgba(198, 40, 40, 0.2); }
+  }
+  .error-dismiss {
+    background: none; border: none; cursor: pointer;
+    color: inherit; font-size: 12px; padding: 0 4px; line-height: 1;
   }
 
   /* ── Content area ──────────────────────────────────────────────────────── */

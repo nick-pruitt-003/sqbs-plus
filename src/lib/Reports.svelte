@@ -212,18 +212,21 @@
           {#each [...tournament.games].sort((a: any, b: any) => a.round - b.round || parseInt(a.game_index) - parseInt(b.game_index)) as g, i}
             {@const aName = tournament.teams[g.team_a.team_index]?.name ?? "?"}
             {@const bName = tournament.teams[g.team_b.team_index]?.name ?? "?"}
-            {@const aWon = g.team_a.total_points >= g.team_b.total_points}
+            {@const isTie = g.team_a.total_points === g.team_b.total_points}
+            {@const aWon = g.team_a.total_points > g.team_b.total_points}
             <tr class:even={i % 2 === 1} class:forfeit={g.forfeit}>
               <td>{g.round}</td>
-              <td class="td-team">{aWon ? aName : bName}</td>
+              <td class="td-team">{isTie ? aName : (aWon ? aName : bName)}</td>
               <td class="td-score">
                 {#if g.forfeit}
                   Forfeit
+                {:else if isTie}
+                  Tie {g.team_a.total_points}–{g.team_b.total_points}
                 {:else}
                   {Math.max(g.team_a.total_points, g.team_b.total_points)}–{Math.min(g.team_a.total_points, g.team_b.total_points)}
                 {/if}
               </td>
-              <td class="td-team">{aWon ? bName : aName}</td>
+              <td class="td-team">{isTie ? bName : (aWon ? bName : aName)}</td>
               {#if tournament.scoring.track_tuh}<td>{g.tossups_heard}</td>{/if}
             </tr>
           {/each}

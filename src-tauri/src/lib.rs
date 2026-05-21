@@ -53,18 +53,23 @@ fn open_file(path: String, state: State<AppState>) -> Result<Tournament, String>
 
 #[tauri::command]
 fn save_file(path: String, state: State<AppState>) -> Result<Tournament, String> {
-    let mut tournament = state.tournament.lock().unwrap().clone();
-    if tournament.reports.base_name.is_empty() {
-        if let Some(stem) = Path::new(&path).file_stem().and_then(|s| s.to_str()) {
-            tournament.reports.base_name = stem.to_string();
+    // Update base_name under the lock if needed, then clone for I/O
+    let tournament = {
+        let mut t = state.tournament.lock().map_err(|e| format!("state corrupted: {e}"))?;
+        if t.reports.base_name.is_empty() {
+            if let Some(stem) = Path::new(&path).file_stem().and_then(|s| s.to_str()) {
+                t.reports.base_name = stem.to_string();
+            }
         }
-    }
+        t.clone()
+    };
+    // Write file without holding the mutex
     let file = File::create(&path).map_err(|e| e.to_string())?;
     let mut writer = BufWriter::new(file);
     write_sqbs(&mut writer, &tournament).map_err(|e| e.to_string())?;
     writer.flush().map_err(|e: std::io::Error| e.to_string())?;
-    *state.tournament.lock().unwrap() = tournament.clone();
-    *state.file_path.lock().unwrap() = Some(path);
+    // Only update file_path — the in-memory tournament is already current
+    *state.file_path.lock().map_err(|e| format!("state corrupted: {e}"))? = Some(path);
     Ok(tournament)
 }
 
@@ -120,6 +125,7 @@ mod parity_tests {
     const REF_DIR: &str = r"C:\Users\Nick\Downloads\SQBSTournamentKit-main\Tests\SQBSTournamentKitTests\Resources\Reference\HighlandGames";
 
     #[test]
+    #[ignore = "requires Windows-only file paths; run manually on the PC with cargo test -- --ignored"]
     fn reports_match_reference() {
         let file = fs::File::open(QZX).expect("cannot open qzx file");
         let mut tournament = SqbsParser::new(BufReader::new(file)).parse().expect("parse failed");
