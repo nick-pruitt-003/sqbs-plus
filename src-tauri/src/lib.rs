@@ -107,3 +107,66 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod parity_tests {
+    use super::sqbs_format::SqbsParser;
+    use super::reports;
+    use std::fs;
+    use std::io::BufReader;
+    use std::path::PathBuf;
+
+    const QZX: &str = r"C:\Users\Nick\Downloads\Highland Games 2023 Rounds 1-11 [Prelims bracketing].qzx";
+    const REF_DIR: &str = r"C:\Users\Nick\Downloads\SQBSTournamentKit-main\Tests\SQBSTournamentKitTests\Resources\Reference\HighlandGames";
+
+    #[test]
+    fn reports_match_reference() {
+        let file = fs::File::open(QZX).expect("cannot open qzx file");
+        let mut tournament = SqbsParser::new(BufReader::new(file)).parse().expect("parse failed");
+
+        // Mirror open_file: derive base_name from file stem when not set in the file
+        if tournament.reports.base_name.is_empty() {
+            if let Some(stem) = std::path::Path::new(QZX).file_stem().and_then(|s| s.to_str()) {
+                tournament.reports.base_name = stem.to_string();
+            }
+        }
+
+        let tmp_dir = std::env::temp_dir().join("sqbs_parity");
+        fs::create_dir_all(&tmp_dir).unwrap();
+        let written = reports::generate_all_reports(&tournament, tmp_dir.to_str().unwrap())
+            .expect("generate_all_reports failed");
+
+        println!("Generated {} files:", written.len());
+        for p in &written { println!("  {p}"); }
+
+        let mut all_match = true;
+        for path in &written {
+            let filename = PathBuf::from(path).file_name().unwrap().to_str().unwrap().to_string();
+            let ref_path = PathBuf::from(REF_DIR).join(&filename);
+            let generated = fs::read_to_string(path).expect("cannot read generated file");
+
+            match fs::read_to_string(&ref_path) {
+                Ok(reference) => {
+                    if generated == reference {
+                        println!("PASS {filename}");
+                    } else {
+                        all_match = false;
+                        println!("FAIL {filename}");
+                        let gen_lines: Vec<_> = generated.lines().collect();
+                        let ref_lines: Vec<_> = reference.lines().collect();
+                        for (i, (g, r)) in gen_lines.iter().zip(ref_lines.iter()).enumerate() {
+                            if g != r {
+                                println!("  first diff line {}: generated={g:?} reference={r:?}", i + 1);
+                                break;
+                            }
+                        }
+                        println!("  line counts: generated={} reference={}", gen_lines.len(), ref_lines.len());
+                    }
+                }
+                Err(_) => println!("SKIP {filename} (no reference at {})", ref_path.display()),
+            }
+        }
+
+        assert!(all_match, "one or more report files did not match reference — see output above");
+    }
+}
