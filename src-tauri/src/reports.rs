@@ -921,7 +921,7 @@ pub fn stat_key_html(t: &Tournament, nav: &Nav) -> String {
         }
     }
     body.push_str("</table><P>\n");
-    body.push_str("For information about this statistics program, visit the <A HREF=http://www.stanford.edu/~csewell/sqbs/index.htm>SQBS homepage</A>.");
+    body.push_str("For information about this statistics program, visit the <A HREF=https://www.stanford.edu/~csewell/sqbs/index.htm>SQBS homepage</A>.");
 
     html_page(&format!("{} Stat Key ", t.name), nav, &body)
 }
