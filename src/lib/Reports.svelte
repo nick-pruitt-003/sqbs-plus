@@ -15,6 +15,9 @@
     try {
       const files: string[] = await invoke("generate_reports", { dir });
       lastResult = { ok: true, msg: `Generated ${files.length} report files in ${dir}` };
+      // Open the standings report in the default browser
+      const standings = files.find(f => f.includes("standings")) ?? files[0];
+      if (standings) await invoke("open_in_browser", { path: standings });
     } catch (e: any) {
       lastResult = { ok: false, msg: String(e) };
     } finally {

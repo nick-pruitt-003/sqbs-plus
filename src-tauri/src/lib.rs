@@ -90,6 +90,13 @@ fn generate_reports(dir: String, state: State<AppState>) -> Result<Vec<String>, 
     reports::generate_all_reports(&tournament, &dir).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn open_in_browser(path: String, app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_path(&path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(clippy::missing_panics_doc)]
 pub fn run() {
@@ -108,6 +115,7 @@ pub fn run() {
             update_tournament,
             get_file_path,
             generate_reports,
+            open_in_browser,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

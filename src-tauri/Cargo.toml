@@ -23,3 +23,10 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 
+[profile.release]
+panic = "abort"       # strip unwinding machinery
+codegen-units = 1     # single CGU enables best LTO
+lto = true            # link-time optimization
+opt-level = "s"       # optimize for binary size
+strip = true          # remove debug symbols from binary
+
