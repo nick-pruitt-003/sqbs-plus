@@ -13,7 +13,10 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 use std::sync::Mutex;
+use tauri::Emitter;
+use tauri::Manager;
 use tauri::State;
+use tauri_specta::{collect_commands, Builder as SpectaBuilder};
 
 struct AppState {
     tournament: Mutex<Tournament>,
@@ -21,6 +24,7 @@ struct AppState {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn get_tournament(state: State<AppState>) -> Result<Tournament, String> {
     state.tournament.lock()
         .map(|g| g.clone())
@@ -28,6 +32,7 @@ fn get_tournament(state: State<AppState>) -> Result<Tournament, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn new_tournament(state: State<AppState>) -> Result<Tournament, String> {
     let t = Tournament::default();
     *state.tournament.lock().map_err(|e| format!("state corrupted: {e}"))? = t.clone();
@@ -36,6 +41,7 @@ fn new_tournament(state: State<AppState>) -> Result<Tournament, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn open_file(path: String, state: State<AppState>) -> Result<Tournament, String> {
     let file = File::open(&path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
@@ -52,6 +58,7 @@ fn open_file(path: String, state: State<AppState>) -> Result<Tournament, String>
 }
 
 #[tauri::command]
+#[specta::specta]
 fn save_file(path: String, state: State<AppState>) -> Result<Tournament, String> {
     // Update base_name under the lock if needed, then clone for I/O
     let tournament = {
@@ -74,23 +81,27 @@ fn save_file(path: String, state: State<AppState>) -> Result<Tournament, String>
 }
 
 #[tauri::command]
+#[specta::specta]
 fn update_tournament(tournament: Tournament, state: State<AppState>) -> Tournament {
     *state.tournament.lock().unwrap() = tournament.clone();
     tournament
 }
 
 #[tauri::command]
+#[specta::specta]
 fn get_file_path(state: State<AppState>) -> Option<String> {
     state.file_path.lock().unwrap().clone()
 }
 
 #[tauri::command]
+#[specta::specta]
 fn generate_reports(dir: String, state: State<AppState>) -> Result<Vec<String>, String> {
     let tournament = state.tournament.lock().unwrap().clone();
     reports::generate_all_reports(&tournament, &dir).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 fn open_in_browser(path: String, app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     app.opener().open_path(&path, None::<&str>)
@@ -100,14 +111,8 @@ fn open_in_browser(path: String, app: tauri::AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(clippy::missing_panics_doc)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .manage(AppState {
-            tournament: Mutex::new(Tournament::default()),
-            file_path: Mutex::new(None),
-        })
-        .invoke_handler(tauri::generate_handler![
+    let specta_builder = SpectaBuilder::<tauri::Wry>::new()
+        .commands(collect_commands![
             get_tournament,
             new_tournament,
             open_file,
@@ -116,7 +121,34 @@ pub fn run() {
             get_file_path,
             generate_reports,
             open_in_browser,
-        ])
+        ]);
+
+    #[cfg(debug_assertions)]
+    specta_builder
+        .export(specta_typescript::Typescript::default(), "../src/lib/bindings.ts")
+        .expect("Failed to export TypeScript bindings");
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_focus();
+            }
+            if let Some(path) = argv.get(1).filter(|p| {
+                p.ends_with(".sqbs") || p.ends_with(".qzx")
+            }) {
+                let _ = app.emit("single-instance-file", path);
+            }
+        }))
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState {
+            tournament: Mutex::new(Tournament::default()),
+            file_path: Mutex::new(None),
+        })
+        .invoke_handler(specta_builder.invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

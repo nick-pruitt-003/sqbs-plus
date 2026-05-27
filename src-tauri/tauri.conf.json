@@ -32,6 +32,22 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["sqbs"],
+        "name": "SQBS Tournament",
+        "description": "SQBS Tournament File",
+        "role": "Editor",
+        "mimeType": "application/x-sqbs"
+      },
+      {
+        "ext": ["qzx"],
+        "name": "SQBS Tournament (Legacy)",
+        "description": "SQBS Legacy Tournament File",
+        "role": "Editor",
+        "mimeType": "application/x-sqbs"
+      }
     ]
   }
 }

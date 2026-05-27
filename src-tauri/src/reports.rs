@@ -66,11 +66,14 @@ impl Nav {
     }
 }
 
+const SORT_SCRIPT: &str = include_str!("sort_script.js");
+
 fn html_page(title: &str, nav: &Nav, body: &str) -> String {
     format!(
-        "<HTML>\n<HEAD>\n<TITLE>{}</TITLE>\n{}\n</HEAD>\n<BODY>\n{}{}</BODY>\n</HTML>\n",
+        "<HTML>\n<HEAD>\n<TITLE>{}</TITLE>\n{}<script>\n{}</script>\n</HEAD>\n<BODY>\n{}{}</BODY>\n</HTML>\n",
         title,
         nav.style_link(),
+        SORT_SCRIPT,
         nav.bar(),
         body
     )
@@ -204,6 +207,10 @@ fn q_headers_right(qv: &[i32; 4], enabled: &[bool; 4]) -> String {
     qv.iter().zip(enabled).filter(|(_, &e)| e).map(|(v, _)| format!("  <td ALIGN=RIGHT><B>{v}</B></td>\n")).collect()
 }
 
+fn q_headers_th(qv: &[i32; 4], enabled: &[bool; 4]) -> String {
+    qv.iter().zip(enabled).filter(|(_, &e)| e).map(|(v, _)| format!("  <th>{v}</th>\n")).collect()
+}
+
 fn q_cells_right(q: &[i32; 4], enabled: &[bool; 4]) -> String {
     q.iter().zip(enabled).filter(|(_, &e)| e).map(|(v, _)| format!("  <td ALIGN=RIGHT>{v}</td>\n")).collect()
 }
@@ -274,33 +281,32 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
 
     let mut body = String::new();
     body.push_str(&format!("<H1>{} Team Standings </H1><P>\n", t.name));
-    body.push_str("<table border=1 width=100%>\n");
-    body.push_str("<tr>\n");
-    body.push_str("  <td ALIGN=LEFT><B>Rank</B></td>\n");
-    body.push_str("  <td ALIGN=LEFT><B>Team</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>W</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>L</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>T</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>Pct</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>PPG</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>PAPG</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>Mrg</B></td>\n");
-    body.push_str(&q_headers_right(qv, qe));
-    body.push_str("  <td ALIGN=RIGHT><B>TUH</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>P/TU</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>P/N</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>G/N</B></td>\n");
+    body.push_str("<table border=1 width=100% data-sort=\"rerankFirst\">\n<thead>\n<tr>\n");
+    body.push_str("  <th>Rank</th>\n");
+    body.push_str("  <th>Team</th>\n");
+    body.push_str("  <th>W</th>\n");
+    body.push_str("  <th>L</th>\n");
+    body.push_str("  <th>T</th>\n");
+    body.push_str("  <th>Pct</th>\n");
+    body.push_str("  <th>PPG</th>\n");
+    body.push_str("  <th>PAPG</th>\n");
+    body.push_str("  <th>Mrg</th>\n");
+    body.push_str(&q_headers_th(qv, qe));
+    body.push_str("  <th>TUH</th>\n");
+    body.push_str("  <th>P/TU</th>\n");
+    body.push_str("  <th>P/N</th>\n");
+    body.push_str("  <th>G/N</th>\n");
     if t.track_bonuses {
-        body.push_str("  <td ALIGN=RIGHT><B>BHrd</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>BPts</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>P/B</B></td>\n");
+        body.push_str("  <th>BHrd</th>\n");
+        body.push_str("  <th>BPts</th>\n");
+        body.push_str("  <th>P/B</th>\n");
         if bb {
-            body.push_str("  <td ALIGN=RIGHT><B>BBHrd</B></td>\n");
-            body.push_str("  <td ALIGN=RIGHT><B>BBPts</B></td>\n");
-            body.push_str("  <td ALIGN=RIGHT><B>P/BB</B></td>\n");
+            body.push_str("  <th>BBHrd</th>\n");
+            body.push_str("  <th>BBPts</th>\n");
+            body.push_str("  <th>P/BB</th>\n");
         }
     }
-    body.push_str("</tr>\n");
+    body.push_str("</tr>\n</thead>\n<tbody>\n");
 
     for (rank, a) in sorted.iter().enumerate() {
         let team_name = escape_html(t.teams.get(a.team_index).map_or("?", |t| t.name.as_str()));
@@ -341,7 +347,7 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
         }
         body.push_str("</tr>\n");
     }
-    body.push_str("</table>\n");
+    body.push_str("</tbody>\n</table>\n");
 
     html_page(&format!("{} Team Standings ", t.name), nav, &body)
 }
@@ -364,19 +370,19 @@ pub fn individuals_html(t: &Tournament, nav: &Nav) -> String {
     let qe = &t.scoring.q_enabled;
     let mut body = String::new();
     body.push_str(&format!("<H1>{} Individual Statistics </H1><P>\n", t.name));
-    body.push_str("<table border=1 width=100%>\n<tr>\n");
-    body.push_str("  <td ALIGN=LEFT><B>Rank</B></td>\n");
-    body.push_str("  <td ALIGN=LEFT><B>Player</B></td>\n");
-    body.push_str("  <td ALIGN=LEFT><B>Team</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>GP</B></td>\n");
-    body.push_str(&q_headers_right(qv, qe));
-    body.push_str("  <td ALIGN=RIGHT><B>TUH</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>P/TU</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>P/N</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>G/N</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>Pts</B></td>\n");
-    body.push_str("  <td ALIGN=RIGHT><B>PPG</B></td>\n");
-    body.push_str("</tr>\n");
+    body.push_str("<table border=1 width=100% data-sort=\"rerankFirst\">\n<thead>\n<tr>\n");
+    body.push_str("  <th>Rank</th>\n");
+    body.push_str("  <th>Player</th>\n");
+    body.push_str("  <th>Team</th>\n");
+    body.push_str("  <th>GP</th>\n");
+    body.push_str(&q_headers_th(qv, qe));
+    body.push_str("  <th>TUH</th>\n");
+    body.push_str("  <th>P/TU</th>\n");
+    body.push_str("  <th>P/N</th>\n");
+    body.push_str("  <th>G/N</th>\n");
+    body.push_str("  <th>Pts</th>\n");
+    body.push_str("  <th>PPG</th>\n");
+    body.push_str("</tr>\n</thead>\n<tbody>\n");
 
     for (rank, p) in sorted.iter().enumerate() {
         let team_name = t.teams.get(p.team_index).map_or("?", |t| t.name.as_str());
@@ -403,7 +409,7 @@ pub fn individuals_html(t: &Tournament, nav: &Nav) -> String {
         body.push_str(&format!("  <td ALIGN=RIGHT>{ppg:.2}</td>\n"));
         body.push_str("</tr>\n");
     }
-    body.push_str("</table>\n");
+    body.push_str("</tbody>\n</table>\n");
     html_page(&format!("{} Individual Statistics ", t.name), nav, &body)
 }
 
@@ -486,15 +492,15 @@ pub fn rounds_html(t: &Tournament, nav: &Nav) -> String {
 
     let mut body = String::new();
     body.push_str(&format!("<H1>{} Round Report </H1><P>\n", t.name));
-    body.push_str("<table border=1 width=100%>\n<tr>\n");
-    body.push_str("  <td><B>Round</B></td>\n");
-    body.push_str("  <td><B>PPG/Team</B></td>\n");
-    body.push_str("  <td><B>TUPts/TUH</B></td>\n");
+    body.push_str("<table border=1 width=100% data-sort=\"sort\">\n<thead>\n<tr>\n");
+    body.push_str("  <th>Round</th>\n");
+    body.push_str("  <th>PPG/Team</th>\n");
+    body.push_str("  <th>TUPts/TUH</th>\n");
     if t.track_bonuses {
-        body.push_str("  <td><B>BPts/BHrd</B></td>\n");
-        if bb { body.push_str("  <td><B>BBPts/BBHrd</B></td>\n"); }
+        body.push_str("  <th>BPts/BHrd</th>\n");
+        if bb { body.push_str("  <th>BBPts/BBHrd</th>\n"); }
     }
-    body.push_str("</tr>\n");
+    body.push_str("</tr>\n</thead>\n<tbody>\n");
 
     for round in &round_nums {
         let games: Vec<&Game> = t.games.iter().filter(|g| g.round == *round && !g.forfeit).collect();
@@ -538,7 +544,7 @@ pub fn rounds_html(t: &Tournament, nav: &Nav) -> String {
         }
         body.push_str("</tr>\n");
     }
-    body.push_str("</table>\n");
+    body.push_str("</tbody>\n</table>\n");
 
     html_page(&format!("{} Round Report ", t.name), nav, &body)
 }
@@ -561,28 +567,28 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
         body.push_str(&format!("<P><P><H2><A NAME=t{ti}>{team_name}</A></H2><P>\n"));
 
         // Game-by-game table
-        body.push_str("<table border=1 width=100%>\n<tr>\n");
-        body.push_str("<td ALIGN=LEFT><B>Opponent</B></td>\n");
-        body.push_str("<td ALIGN=RIGHT><B>Result</B></td>\n");
-        body.push_str("<td ALIGN=RIGHT><B>PF</B></td>\n");
-        body.push_str("<td ALIGN=RIGHT><B>PA</B></td>\n");
-        body.push_str(&q_headers_right(qv, qe));
-        body.push_str("  <td ALIGN=RIGHT><B>TUH</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>PPTH</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>P/N</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>G/N</B></td>\n");
+        body.push_str("<table border=1 width=100% data-sort=\"sort\">\n<thead>\n<tr>\n");
+        body.push_str("  <th>Opponent</th>\n");
+        body.push_str("  <th>Result</th>\n");
+        body.push_str("  <th>PF</th>\n");
+        body.push_str("  <th>PA</th>\n");
+        body.push_str(&q_headers_th(qv, qe));
+        body.push_str("  <th>TUH</th>\n");
+        body.push_str("  <th>PPTH</th>\n");
+        body.push_str("  <th>P/N</th>\n");
+        body.push_str("  <th>G/N</th>\n");
         if t.track_bonuses {
-            body.push_str("  <td ALIGN=RIGHT><B>BHrd</B></td>\n");
-            body.push_str("  <td ALIGN=RIGHT><B>BPts</B></td>\n");
-            body.push_str("  <td ALIGN=RIGHT><B>P/B</B></td>\n");
+            body.push_str("  <th>BHrd</th>\n");
+            body.push_str("  <th>BPts</th>\n");
+            body.push_str("  <th>P/B</th>\n");
             if bb {
-                body.push_str("  <td ALIGN=RIGHT><B>BBHrd</B></td>\n");
-                body.push_str("  <td ALIGN=RIGHT><B>BBPts</B></td>\n");
-                body.push_str("  <td ALIGN=RIGHT><B>P/BB</B></td>\n");
+                body.push_str("  <th>BBHrd</th>\n");
+                body.push_str("  <th>BBPts</th>\n");
+                body.push_str("  <th>P/BB</th>\n");
             }
         }
-        body.push_str("  <td ALIGN=LEFT><B>Packet</B></td>\n");
-        body.push_str("</tr>\n");
+        body.push_str("  <th>Packet</th>\n");
+        body.push_str("</tr>\n</thead>\n<tbody>\n");
 
         // Per-game rows + accumulate totals
         let mut tot_pf = 0i32; let mut tot_pa = 0i32;
@@ -640,11 +646,11 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             body.push_str("</tr>\n");
         }
 
-        // Total row
+        // Total row — pinned from sort
         let tot_ppth = safe_div(f64::from(tot_pf), f64::from(tot_tuh));
         let tot_pn = pn_str(&tot_q, qv, qe);
         let tot_gn = gn_str(&tot_q, qv, qe);
-        body.push_str("<tr>\n");
+        body.push_str("<tr data-sort-method=\"none\">\n");
         body.push_str("  <td ALIGN=LEFT><B>Total</B></td>\n  <td></td>\n");
         body.push_str(&format!("  <td ALIGN=RIGHT><B>{tot_pf}</B></td>\n  <td ALIGN=RIGHT><B>{tot_pa}</B>\n"));
         body.push_str(&q_cells_bold(&tot_q, qe));
@@ -663,21 +669,21 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             }
         }
         body.push_str("  <td ALIGN=LEFT> </td>\n");
-        body.push_str("</tr>\n</table><P>\n");
+        body.push_str("</tr>\n</tbody>\n</table><P>\n");
 
         // Player table for this team
-        body.push_str("<table border=1 width=100%>\n<tr>\n");
-        body.push_str("  <td ALIGN=LEFT><B>Player</B></td>\n");
-        body.push_str("  <td ALIGN=LEFT><B>Team</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>GP</B></td>\n");
-        body.push_str(&q_headers_right(qv, qe));
-        body.push_str("  <td ALIGN=RIGHT><B>TUH</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>P/TU</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>P/N</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>G/N</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>Pts</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>PPG</B></td>\n");
-        body.push_str("</tr>\n");
+        body.push_str("<table border=1 width=100% data-sort=\"sort\">\n<thead>\n<tr>\n");
+        body.push_str("  <th>Player</th>\n");
+        body.push_str("  <th>Team</th>\n");
+        body.push_str("  <th>GP</th>\n");
+        body.push_str(&q_headers_th(qv, qe));
+        body.push_str("  <th>TUH</th>\n");
+        body.push_str("  <th>P/TU</th>\n");
+        body.push_str("  <th>P/N</th>\n");
+        body.push_str("  <th>G/N</th>\n");
+        body.push_str("  <th>Pts</th>\n");
+        body.push_str("  <th>PPG</th>\n");
+        body.push_str("</tr>\n</thead>\n<tbody>\n");
 
         let team_players: Vec<&PlayerAgg> = players.iter().filter(|p| p.team_index == ti).collect();
         for p in &team_players {
@@ -700,7 +706,7 @@ pub fn team_detail_html(t: &Tournament, nav: &Nav) -> String {
             body.push_str(&format!("  <td ALIGN=RIGHT>{ppg:.2}</td>\n"));
             body.push_str("</tr>\n");
         }
-        body.push_str("</table>\n");
+        body.push_str("</tbody>\n</table>\n");
     }
 
     html_page(&format!("{} Team Details ", t.name), nav, &body)
@@ -724,17 +730,17 @@ pub fn player_detail_html(t: &Tournament, nav: &Nav) -> String {
 
         body.push_str(&format!("<P><P><H2><A NAME=p{}_{}>{}</A>, {}</H2><P>\n",
             p.player_index + 1, p.team_index, pname, team_name));
-        body.push_str("<table border=1 width=100%>\n<tr>\n");
-        body.push_str("<td ALIGN=LEFT><B>Opponent</B></td>\n");
-        body.push_str("  <td ALIGN=LEFT><B>Packet</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>GP</B></td>\n");
-        body.push_str(&q_headers_right(qv, qe));
-        body.push_str("  <td ALIGN=RIGHT><B>TUH</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>P/TU</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>P/N</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>G/N</B></td>\n");
-        body.push_str("  <td ALIGN=RIGHT><B>Pts</B></td>\n");
-        body.push_str("</tr>\n");
+        body.push_str("<table border=1 width=100% data-sort=\"sort\">\n<thead>\n<tr>\n");
+        body.push_str("  <th>Opponent</th>\n");
+        body.push_str("  <th>Packet</th>\n");
+        body.push_str("  <th>GP</th>\n");
+        body.push_str(&q_headers_th(qv, qe));
+        body.push_str("  <th>TUH</th>\n");
+        body.push_str("  <th>P/TU</th>\n");
+        body.push_str("  <th>P/N</th>\n");
+        body.push_str("  <th>G/N</th>\n");
+        body.push_str("  <th>Pts</th>\n");
+        body.push_str("</tr>\n</thead>\n<tbody>\n");
 
         for ge in &p.games {
             let opp_name = t.teams.get(ge.opp_team_index).map_or("?", |t| t.name.as_str());
@@ -754,11 +760,11 @@ pub fn player_detail_html(t: &Tournament, nav: &Nav) -> String {
             body.push_str("</tr>\n");
         }
 
-        // Totals row
+        // Totals row — pinned from sort
         let ptu = safe_div(f64::from(p.pts), f64::from(p.tuh));
         let pn = pn_str(&p.q, qv, qe);
         let gn = gn_str(&p.q, qv, qe);
-        body.push_str("<tr>\n");
+        body.push_str("<tr data-sort-method=\"none\">\n");
         body.push_str("  <td ALIGN=LEFT><B>Total</B></td>\n");
         body.push_str("  <td ALIGN=LEFT><B> </B></td>\n");
         body.push_str(&format!("  <td ALIGN=RIGHT><B>{:.2}</B></td>\n", p.gp));
@@ -769,7 +775,7 @@ pub fn player_detail_html(t: &Tournament, nav: &Nav) -> String {
         body.push_str(&format!("  <td ALIGN=RIGHT><B>{gn}</B></td>\n"));
         body.push_str(&format!("  <td ALIGN=RIGHT><B>{}</B></td>\n", p.pts));
         body.push_str("</tr>\n");
-        body.push_str("</table>\n");
+        body.push_str("</tbody>\n</table>\n");
     }
 
     html_page(&format!("{} Individual Detail ", t.name), nav, &body)

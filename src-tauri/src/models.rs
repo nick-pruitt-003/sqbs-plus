@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, specta::Type)]
 pub struct Player {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, specta::Type)]
 pub struct Team {
     pub name: String,
     pub players: Vec<Player>,
@@ -14,7 +14,7 @@ pub struct Team {
     pub exhibition: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, specta::Type)]
 pub struct PlayerScore {
     pub player_index: usize,
     pub gp: f32,
@@ -22,7 +22,7 @@ pub struct PlayerScore {
     pub points: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, specta::Type)]
 pub struct TeamScore {
     pub team_index: usize,
     pub total_points: i32,
@@ -35,7 +35,7 @@ pub struct TeamScore {
     pub player_scores: Vec<Option<PlayerScore>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct Game {
     pub game_index: String,
     pub round: u32,
@@ -60,7 +60,7 @@ impl Default for Game {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ScoringSettings {
     /// Point values for each tossup category [power, `alt_power`, normal, neg]
     pub q_values: [i32; 4],
@@ -88,7 +88,7 @@ impl Default for ScoringSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ReportSettings {
     pub base_name: String,
     // filenames
@@ -137,7 +137,7 @@ impl Default for ReportSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct Tournament {
     pub name: String,
     pub teams: Vec<Team>,

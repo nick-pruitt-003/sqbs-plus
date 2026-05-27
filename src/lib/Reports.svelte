@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { commands } from "$lib/bindings";
+  import type { Tournament } from "$lib/bindings";
 
-  let { tournament } = $props<{ tournament: any }>();
+  let { tournament } = $props<{ tournament: Tournament }>();
 
   let generating = $state(false);
   let lastResult = $state<{ ok: boolean; msg: string } | null>(null);
@@ -13,11 +14,11 @@
     generating = true;
     lastResult = null;
     try {
-      const files: string[] = await invoke("generate_reports", { dir });
+      const files: string[] = await commands.generateReports(dir);
       lastResult = { ok: true, msg: `Generated ${files.length} report files in ${dir}` };
       // Open the standings report in the default browser
       const standings = files.find(f => f.includes("standings")) ?? files[0];
-      if (standings) await invoke("open_in_browser", { path: standings });
+      if (standings) await commands.openInBrowser(standings);
     } catch (e: any) {
       lastResult = { ok: false, msg: String(e) };
     } finally {

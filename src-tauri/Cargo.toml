@@ -21,6 +21,13 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2.4.2"
+tauri-plugin-window-state = "2.4.1"
+tauri-plugin-store = "2.4.3"
+tauri-plugin-deep-link = "2.4.9"
+tauri-specta = { version = "2.0.0-rc.25", features = ["derive", "typescript"] }
+specta = "2.0.0-rc.25"
+specta-typescript = "0.0.12"
 serde = { version = "1", features = ["derive"] }
 
 [profile.release]

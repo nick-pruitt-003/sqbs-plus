@@ -1,6 +1,13 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
   import { open, save } from "@tauri-apps/plugin-dialog";
+  import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+  import { restoreStateCurrent, StateFlags } from "@tauri-apps/plugin-window-state";
+  import { load as loadStore } from "@tauri-apps/plugin-store";
+  import { onOpenUrl, getCurrent } from "@tauri-apps/plugin-deep-link";
+  import { commands } from "$lib/bindings";
+  import type { Tournament } from "$lib/bindings";
   import TournamentSetup from "$lib/TournamentSetup.svelte";
   import GameEntry from "$lib/GameEntry.svelte";
   import Reports from "$lib/Reports.svelte";
@@ -9,19 +16,69 @@
   type Tab = "setup" | "games" | "reports" | "settings";
 
   let activeTab = $state<Tab>("setup");
-  let tournament = $state<any>(null);
+  let tournament = $state<Tournament | null>(null);
   let isDirty = $state(false);
   let lastError = $state<string | null>(null);
+  let recentFiles = $state<string[]>([]);
+  let isDragOver = $state(false);
 
   // Tracks the in-flight update_tournament promise so saveFile can await it
-  let pendingUpdate: Promise<any> | null = null;
+  let pendingUpdate: Promise<Tournament> | null = null;
+
+  // ── Recent files store helpers ──────────────────────────────────────────────
+  async function loadRecentFiles() {
+    try {
+      const store = await loadStore("sqbs-plus.json");
+      const stored = await store.get<string[]>("recentFiles");
+      if (stored) recentFiles = stored;
+    } catch {
+      // store not yet created or unavailable — that's fine
+    }
+  }
+
+  async function addRecentFile(path: string) {
+    try {
+      const store = await loadStore("sqbs-plus.json");
+      const updated = [path, ...recentFiles.filter(p => p !== path)].slice(0, 5);
+      recentFiles = updated;
+      await store.set("recentFiles", updated);
+      await store.save();
+    } catch {
+      // non-critical
+    }
+  }
+
+  async function removeRecentFile(path: string) {
+    try {
+      const store = await loadStore("sqbs-plus.json");
+      const updated = recentFiles.filter(p => p !== path);
+      recentFiles = updated;
+      await store.set("recentFiles", updated);
+      await store.save();
+    } catch {
+      // non-critical
+    }
+  }
+
+  // ── Core file operations ────────────────────────────────────────────────────
+  async function openFileByPath(path: string) {
+    try {
+      tournament = await commands.openFile(path);
+      isDirty = false;
+      lastError = null;
+      await addRecentFile(path);
+    } catch (e: unknown) {
+      lastError = String(e);
+      await removeRecentFile(path);
+    }
+  }
 
   async function newTournament() {
     try {
-      tournament = await invoke("new_tournament");
+      tournament = await commands.newTournament();
       isDirty = false;
       lastError = null;
-    } catch (e: any) {
+    } catch (e: unknown) {
       lastError = String(e);
     }
   }
@@ -32,11 +89,9 @@
         filters: [{ name: "SQBS Tournament", extensions: ["sqbs", "qzx"] }],
       });
       if (path) {
-        tournament = await invoke("open_file", { path });
-        isDirty = false;
-        lastError = null;
+        await openFileByPath(path);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       lastError = String(e);
     }
   }
@@ -45,18 +100,18 @@
     try {
       // Ensure any in-flight tournament update is committed before saving
       if (pendingUpdate) await pendingUpdate;
-      let path: string | null = await invoke("get_file_path");
+      let path: string | null = await commands.getFilePath();
       if (!path) {
         path = await save({
           filters: [{ name: "SQBS Tournament", extensions: ["sqbs"] }],
         });
       }
       if (path) {
-        tournament = await invoke("save_file", { path });
+        tournament = await commands.saveFile(path);
         isDirty = false;
         lastError = null;
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       lastError = String(e);
     }
   }
@@ -69,26 +124,87 @@
         filters: [{ name: "SQBS Tournament", extensions: ["sqbs"] }],
       });
       if (path) {
-        tournament = await invoke("save_file", { path });
+        tournament = await commands.saveFile(path);
         isDirty = false;
         lastError = null;
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       lastError = String(e);
     }
   }
 
-  function onTournamentChanged(updated: any) {
+  function onTournamentChanged(updated: Tournament) {
     tournament = updated;
     isDirty = true;
-    pendingUpdate = invoke("update_tournament", { tournament: updated });
-    pendingUpdate.catch((e: any) => { lastError = String(e); });
+    pendingUpdate = commands.updateTournament(updated);
+    pendingUpdate.catch((e: unknown) => { lastError = String(e); });
   }
+
+  // ── Lifecycle ───────────────────────────────────────────────────────────────
+  onMount(() => {
+    const cleanups: (() => void)[] = [];
+
+    (async () => {
+      // Restore window state (size/position)
+      await restoreStateCurrent(StateFlags.ALL);
+
+      // Load recent files
+      await loadRecentFiles();
+
+      // Listen for single-instance file open event
+      const unlistenSingleInstance = await listen<string>("single-instance-file", async (e) => {
+        await openFileByPath(e.payload);
+      });
+      cleanups.push(unlistenSingleInstance);
+
+      // Listen for deep-link file open events
+      const unlistenDeep = await onOpenUrl(async (urls: string[]) => {
+        const f = urls.find((p: string) => p.endsWith(".sqbs") || p.endsWith(".qzx"));
+        if (f) await openFileByPath(f);
+      });
+      cleanups.push(unlistenDeep);
+
+      // Check if app was launched to open a specific file
+      const currentFiles = await getCurrent();
+      if (currentFiles?.length) {
+        const f = currentFiles.find((p: string) => p.endsWith(".sqbs") || p.endsWith(".qzx"));
+        if (f) await openFileByPath(f);
+      }
+
+      // Drag-and-drop file open
+      const appWindow = getCurrentWebviewWindow();
+      const unlistenDrop = await appWindow.onDragDropEvent(async (event) => {
+        if (event.payload.type === "drop") {
+          const paths = (event.payload as { type: "drop"; paths: string[] }).paths;
+          const file = paths?.find(
+            (p: string) => p.endsWith(".sqbs") || p.endsWith(".qzx")
+          );
+          if (file) await openFileByPath(file);
+          isDragOver = false;
+        } else if (event.payload.type === "enter") {
+          isDragOver = true;
+        } else if (event.payload.type === "leave") {
+          isDragOver = false;
+        }
+      });
+      cleanups.push(unlistenDrop);
+    })();
+
+    return () => {
+      cleanups.forEach(fn => fn());
+    };
+  });
 
   newTournament();
 </script>
 
-<div class="app">
+<div class="app" class:drag-over={isDragOver}>
+  {#if isDragOver}
+    <div class="drag-overlay">
+      <div class="drag-message">Drop .sqbs or .qzx file to open</div>
+    </div>
+  {/if}
+
   <div class="toolbar">
     <button class="tool-btn" onclick={newTournament} title="New tournament">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -129,6 +245,21 @@
     <div class="toolbar-spacer"></div>
   </div>
 
+  {#if recentFiles.length > 0}
+    <div class="recent-files-bar">
+      <span class="recent-label">Recent:</span>
+      {#each recentFiles as filePath}
+        <button
+          class="recent-file-btn"
+          onclick={() => openFileByPath(filePath)}
+          title={filePath}
+        >
+          {filePath.split(/[/\\]/).at(-1)}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   <nav class="tab-bar">
     <div class="tab-group">
       <button class="tab-btn" class:active={activeTab === "setup"}    onclick={() => (activeTab = "setup")}>Tournament Setup</button>
@@ -141,7 +272,7 @@
   {#if lastError}
     <div class="error-banner" role="alert">
       <span>{lastError}</span>
-      <button class="error-dismiss" onclick={() => (lastError = null)}>✕</button>
+      <button class="error-dismiss" onclick={() => (lastError = null)}>&#x2715;</button>
     </div>
   {/if}
 
@@ -270,6 +401,34 @@
     flex-direction: column;
     height: 100vh;
     background: var(--bg-app);
+    position: relative;
+  }
+
+  .app.drag-over {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
+
+  /* ── Drag overlay ──────────────────────────────────────────────────────── */
+  .drag-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 113, 227, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  .drag-message {
+    background: var(--bg-surface);
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius);
+    padding: 20px 40px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
   }
 
   /* ── Toolbar ───────────────────────────────────────────────────────────── */
@@ -336,6 +495,41 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     opacity: 0.85;
+  }
+
+  /* ── Recent files bar ──────────────────────────────────────────────────── */
+  .recent-files-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: var(--bg-sunken);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    min-height: 26px;
+  }
+
+  .recent-label {
+    font-size: 11px;
+    color: var(--text-3);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .recent-file-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1px 8px;
+    font-size: 11px;
+    color: var(--accent);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s;
+  }
+
+  .recent-file-btn:hover {
+    background: rgba(0, 113, 227, 0.08);
   }
 
   /* ── Tab bar ───────────────────────────────────────────────────────────── */
