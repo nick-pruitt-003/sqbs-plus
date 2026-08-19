@@ -1,7 +1,50 @@
 <script lang="ts">
+  import { commands } from "$lib/bindings";
+  import { clampManualRank } from "$lib/validation";
+
   let { tournament, onChange } = $props<{ tournament: any; onChange: (t: any) => void }>();
 
   const Q_LABELS = ["20", "15", "10", "-5"];
+
+  // ── W-8: unusual capitalization in team/player names ──────────────────────
+  // Enabled via the low bit of the warnings mask (Settings → Warnings).
+  const warn8Enabled = $derived((tournament.warn_flags & 1) !== 0);
+  let nameWarning = $state<string | null>(null);
+
+  // Checks are async, so a slower earlier reply must not overwrite a later one.
+  let checkSeq = 0;
+
+  $effect(() => {
+    if (!warn8Enabled) {
+      checkSeq++;          // invalidate anything in flight
+      nameWarning = null;
+    }
+  });
+
+  // The banner reflects the most recent check only, so correcting a flagged
+  // name clears it rather than leaving a warning about text that is no longer
+  // on screen.
+  async function checkName(value: string) {
+    const seq = ++checkSeq;
+    if (!warn8Enabled) return;
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      nameWarning = null;
+      return;
+    }
+    try {
+      const unusual = await commands.checkNameCapitalization(trimmed);
+      if (seq !== checkSeq) return;  // superseded
+      nameWarning = unusual ? trimmed : null;
+    } catch {
+      // A failed check is not a naming problem — leave the banner as it was
+      // rather than reporting a backend error on a name field.
+    }
+  }
+
+  function setManualRank(ti: number, raw: string) {
+    updateTeamField(ti, "manual_rank", clampManualRank(raw, tournament.teams.length));
+  }
 
   function update(field: string, value: any) {
     onChange({ ...tournament, [field]: value });
@@ -30,12 +73,20 @@
       players: Array.from({ length: n }, () => ({ name: "" })),
       division: null,
       exhibition: false,
+      manual_rank: 0,
     }];
     onChange({ ...tournament, teams });
   }
 
   function removeTeam(i: number) {
-    const teams = tournament.teams.filter((_: any, idx: number) => idx !== i);
+    // Ranks above the new team count no longer name a placement, and the file
+    // parser drops them on reload — so drop them here rather than persist a
+    // value the next load won't honor.
+    const remaining = tournament.teams.filter((_: any, idx: number) => idx !== i);
+    const teams = remaining.map((t: any) => ({
+      ...t,
+      manual_rank: clampManualRank(t.manual_rank ?? 0, remaining.length),
+    }));
     onChange({ ...tournament, teams });
   }
 
@@ -168,6 +219,13 @@
     </div>
   {/if}
 
+  {#if nameWarning !== null}
+    <div class="warn-banner" role="status">
+      <span>Unusual capitalization in "{nameWarning}" — check for a typo. (W-8)</span>
+      <button class="rm-btn" aria-label="Dismiss warning" onclick={() => (nameWarning = null)}>✕</button>
+    </div>
+  {/if}
+
   <div class="teams-section">
     <div class="section-hdr teams-hdr">
       <span class="section-title">Teams ({tournament.teams.length})</span>
@@ -177,6 +235,7 @@
       <table class="team-grid">
         <thead>
           <tr>
+            <th class="th-rank" title="Manual final-rank override. Blank = automatic (computed from standings).">Rank</th>
             {#if tournament.uses_divisions}<th class="th-div">Div</th>{/if}
             <th class="th-exh">Exh</th>
             <th class="th-team">Team</th>
@@ -189,6 +248,14 @@
         <tbody>
           {#each tournament.teams as team, ti}
             <tr class:exh={team.exhibition}>
+              <td class="td-rank">
+                <input type="number" class="cell-rank" min="1" max={tournament.teams.length}
+                  value={team.manual_rank > 0 ? team.manual_rank : ""}
+                  placeholder="—"
+                  aria-label={`Final rank override for ${team.name || `team ${ti + 1}`}`}
+                  title="Manual final-rank override. Blank = automatic (computed from standings)."
+                  oninput={(e) => setManualRank(ti, (e.target as HTMLInputElement).value)} />
+              </td>
               {#if tournament.uses_divisions}
                 <td class="td-div">
                   <select value={team.division ?? ""}
@@ -207,6 +274,7 @@
               <td class="td-team">
                 <input type="text" class="cell-team" value={team.name}
                   onfocus={(e) => (e.target as HTMLInputElement).select()}
+                  onblur={(e) => checkName((e.target as HTMLInputElement).value)}
                   oninput={(e) => updateTeamField(ti, "name", (e.target as HTMLInputElement).value)} />
               </td>
               {#each playerCols as pi}
@@ -214,6 +282,7 @@
                   <input type="text" class="cell-player"
                     value={team.players[pi]?.name ?? ""}
                     placeholder={`Player ${pi + 1}`}
+                    onblur={(e) => checkName((e.target as HTMLInputElement).value)}
                     oninput={(e) => updatePlayerName(ti, pi, (e.target as HTMLInputElement).value)} />
                 </td>
               {/each}
@@ -361,6 +430,32 @@
 
   tr:hover td { background: rgba(128,128,128,0.06); }
   tr.exh td { background: rgba(255, 200, 0, 0.07); }
+
+  .th-rank, .td-rank { width: 46px; }
+  .cell-rank {
+    width: 100%;
+    text-align: center;
+    background: transparent;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .cell-rank:focus {
+    background: var(--bg-surface) !important;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2) !important;
+  }
+
+  .warn-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: rgba(255, 200, 0, 0.12);
+    border: 1px solid rgba(200, 150, 0, 0.4);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text);
+  }
 
   .th-div { width: 90px; }
   .th-exh, .td-exh { width: 32px; text-align: center; }

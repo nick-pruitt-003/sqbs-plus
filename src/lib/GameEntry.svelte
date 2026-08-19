@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+  import { normalizeGp } from "$lib/validation";
+
   let { tournament, onChange } = $props<{ tournament: any; onChange: (t: any) => void }>();
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -21,7 +24,16 @@
   function goTo(idx: number) {
     if (idx < 0 || idx >= total) return;
     currentIdx = idx;
-    draft = JSON.parse(JSON.stringify(games[idx]));
+    replaceDraft(JSON.parse(JSON.stringify(games[idx])));
+  }
+
+  /// Swap in a different game (or a different team on one side). Any GP text
+  /// still being typed belonged to the game/team we just left, so it goes too —
+  /// otherwise a field could show raw text from a record that is no longer on
+  /// screen while the draft holds an unrelated number.
+  function replaceDraft(next: any) {
+    draft = next;
+    gpText = {};
   }
 
   // ── New game ──────────────────────────────────────────────────────────────
@@ -60,7 +72,7 @@
     const updated = { ...tournament, games: [...tournament.games, newGame] };
     onChange(updated);
     // select the new game after state updates
-    setTimeout(() => { currentIdx = updated.games.length - 1; draft = JSON.parse(JSON.stringify(newGame)); }, 0);
+    setTimeout(() => { currentIdx = updated.games.length - 1; replaceDraft(JSON.parse(JSON.stringify(newGame))); }, 0);
   }
 
   // ── Save / Delete ─────────────────────────────────────────────────────────
@@ -70,6 +82,19 @@
     onChange({ ...tournament, games });
   }
 
+  // Unsaved edits exist when the draft no longer matches the stored game.
+  const dirty = $derived(
+    currentIdx !== null && draft !== null &&
+    JSON.stringify(draft) !== JSON.stringify(tournament.games[currentIdx])
+  );
+
+  // Auto-save an in-progress game when leaving Game Entry, matching Mac SQBS
+  // `performAutoSaveAndCleanup` — switching tabs unmounts this component, and
+  // silently dropping a fully entered game is the worse failure mode.
+  onDestroy(() => {
+    if (dirty) saveGame();
+  });
+
   function deleteGame() {
     if (currentIdx === null) return;
     const games = tournament.games.filter((_: any, i: number) => i !== currentIdx);
@@ -78,7 +103,7 @@
     onChange({ ...tournament, games: reindexed });
     const newCurrent = Math.min(currentIdx, reindexed.length - 1);
     currentIdx = reindexed.length > 0 ? newCurrent : null;
-    draft = currentIdx !== null ? JSON.parse(JSON.stringify(reindexed[currentIdx])) : null;
+    replaceDraft(currentIdx !== null ? JSON.parse(JSON.stringify(reindexed[currentIdx])) : null);
   }
 
   function teamSwap() {
@@ -86,10 +111,10 @@
     draft = { ...draft, team_a: { ...draft.team_b, team_index: draft.team_a.team_index }, team_b: { ...draft.team_a, team_index: draft.team_b.team_index } };
     // swap team indices
     const tmpIdx = draft.team_a.team_index;
-    draft = { ...draft,
+    replaceDraft({ ...draft,
       team_a: { ...draft.team_a, team_index: draft.team_b.team_index },
       team_b: { ...draft.team_b, team_index: tmpIdx },
-    };
+    });
   }
 
   // ── Draft mutations ───────────────────────────────────────────────────────
@@ -125,6 +150,46 @@
     const updated = { ...side, player_scores: scores };
     updated.total_points = calcSideTotal(updated);
     draft = { ...draft, [sideKey]: updated };
+  }
+
+  // ── Games played ──────────────────────────────────────────────────────────
+  // GP is written into the draft on every keystroke rather than on blur.
+  // Svelte tears the DOM down before onDestroy runs, so there is no moment at
+  // which an unmount handler could still flush a focused field — an edit left
+  // uncommitted at unmount would simply be lost.
+  //
+  // While a field is being typed in we show the raw text, so intermediate
+  // states like "11/" stay visible even though they parse to 0; the canonical
+  // rounded form comes back on blur.
+  let gpText = $state<Record<string, string>>({});
+
+  const gpKey = (sideKey: string, pi: number) => `${sideKey}:${pi}`;
+
+  function displayGp(gp: number): string {
+    return String(Number(gp.toFixed(4)));
+  }
+
+  function gpValue(sideKey: string, pi: number, gp: number): string {
+    return gpText[gpKey(sideKey, pi)] ?? displayGp(gp);
+  }
+
+  function setPlayerGp(sideKey: string, pi: number, raw: string) {
+    gpText = { ...gpText, [gpKey(sideKey, pi)]: raw };
+    const side = draft[sideKey];
+    const current = side.player_scores[pi];
+    if (!current) return;
+    const gp = Math.max(0, normalizeGp(raw));
+    if (gp === current.gp) return;
+    const scores = side.player_scores.map((p: any, i: number) =>
+      i === pi && p ? { ...p, gp } : p);
+    draft = { ...draft, [sideKey]: { ...side, player_scores: scores } };
+  }
+
+  /// Drop the in-progress text so the field shows the canonical value again.
+  function commitGpText(sideKey: string, pi: number) {
+    const rest = { ...gpText };
+    delete rest[gpKey(sideKey, pi)];
+    gpText = rest;
   }
 
   function setPlayerQ(sideKey: string, pi: number, qi: number, value: number) {
@@ -177,7 +242,7 @@
             <select value={ti}
               onchange={(e) => {
                 const newTi = parseInt((e.target as HTMLSelectElement).value);
-                draft = { ...draft, [sideKey]: blankTeamScore(newTi) };
+                replaceDraft({ ...draft, [sideKey]: blankTeamScore(newTi) });
               }}>
               {#each tournament.teams as t, i}<option value={i}>{t.name}</option>{/each}
             </select>
@@ -187,7 +252,8 @@
           <table class="player-table">
             <thead>
               <tr>
-                <th class="th-gp">GP</th>
+                <th class="th-in">In</th>
+                <th class="th-gp" title="Games played. 1 = full game. Enter a decimal (0.5) or a slash fraction (11/23).">GP</th>
                 <th class="th-name">Player</th>
                 {#each activeCols as col}
                   <th class="th-q">{col.v}</th>
@@ -200,9 +266,22 @@
                 {@const active = isActive(sideKey, pi)}
                 {@const p = ps(sideKey, pi)}
                 <tr class:active>
-                  <td class="td-gp">
+                  <td class="td-in">
                     <input type="checkbox" checked={active}
+                      aria-label={`${player.name || `Player ${pi + 1}`} played`}
                       onchange={(e) => setPlayerActive(sideKey, pi, (e.target as HTMLInputElement).checked)} />
+                  </td>
+                  <td class="td-gp">
+                    {#if active && p}
+                      <input class="gp-input" type="text"
+                        value={gpValue(sideKey, pi, p.gp)}
+                        aria-label={`Games played by ${player.name || `player ${pi + 1}`}`}
+                        title="Games played. 1 = full game. Enter a decimal (0.5) or a slash fraction (11/23)."
+                        oninput={(e) => setPlayerGp(sideKey, pi, (e.target as HTMLInputElement).value)}
+                        onblur={() => commitGpText(sideKey, pi)} />
+                    {:else}
+                      <span class="no-play">—</span>
+                    {/if}
                   </td>
                   <td class="td-name">{player.name}</td>
                   {#if active && p}
@@ -402,11 +481,13 @@
 
   tr.active td { background: rgba(0, 113, 227, 0.05); }
 
-  .th-gp { width: 26px; }
+  .th-in { width: 26px; }
+  .th-gp { width: 44px; }
   .th-name { text-align: left; min-width: 60px; }
   .th-q { width: 40px; }
   .th-pts { width: 36px; }
-  .td-gp { text-align: center; }
+  .td-in, .td-gp { text-align: center; }
+  .gp-input { width: 40px; text-align: center; }
   .td-name { text-align: left; color: var(--text); }
   .td-pts { text-align: right; font-weight: 700; color: var(--text); }
   .no-play { color: var(--text-3); text-align: center; }

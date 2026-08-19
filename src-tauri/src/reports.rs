@@ -264,6 +264,42 @@ fn packet_label(t: &Tournament, round: u32) -> String {
 
 // ── Standings ──────────────────────────────────────────────────────────────
 
+/// Re-order an already-computed standings list to honor manual final-rank
+/// overrides. Mirrors Mac SQBS `applyManualRankOverrides` (and YellowFruit's
+/// `overallRank || calculatedRank` rule): each team's effective rank is its
+/// override when set, otherwise its computed placement. On a tie between an
+/// overridden and an auto team the override wins the slot; remaining ties keep
+/// the computed order, so the no-override case is a no-op.
+///
+/// Must run AFTER the normal standings sort.
+fn apply_manual_rank_overrides(t: &Tournament, sorted: &mut [&TeamAgg]) {
+    if !t.teams.iter().any(|team| team.manual_rank > 0) {
+        return;
+    }
+    let manual_of = |a: &TeamAgg| -> u32 {
+        t.teams.get(a.team_index).map_or(0, |team| team.manual_rank)
+    };
+    // Computed placement, captured before the re-sort disturbs the order.
+    let calculated: Vec<(usize, u32)> = sorted
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (a.team_index, u32::try_from(i + 1).unwrap_or(u32::MAX)))
+        .collect();
+    let calculated_of = |a: &TeamAgg| -> u32 {
+        calculated.iter().find(|(idx, _)| *idx == a.team_index).map_or(u32::MAX, |(_, r)| *r)
+    };
+    sorted.sort_by(|a, b| {
+        let (ma, mb) = (manual_of(a), manual_of(b));
+        let (ca, cb) = (calculated_of(a), calculated_of(b));
+        let ea = if ma > 0 { ma } else { ca };
+        let eb = if mb > 0 { mb } else { cb };
+        ea.cmp(&eb)
+            // Equal effective rank: an explicit override outranks an auto team.
+            .then_with(|| (mb > 0).cmp(&(ma > 0)))
+            .then(ca.cmp(&cb))
+    });
+}
+
 pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
     let agg = aggregate_teams(t);
     let mut sorted: Vec<&TeamAgg> = agg.iter().filter(|a| a.games > 0).collect();
@@ -274,6 +310,7 @@ pub fn standings_html(t: &Tournament, nav: &Nav) -> String {
             .then(safe_div(f64::from(b.pf), f64::from(b.games))
                 .partial_cmp(&safe_div(f64::from(a.pf), f64::from(a.games))).unwrap())
     });
+    apply_manual_rank_overrides(t, &mut sorted);
 
     let bb = t.bouncebacks_enabled();
     let qv = &t.scoring.q_values;
@@ -961,6 +998,7 @@ mod tests {
                 ],
                 division: None,
                 exhibition: false,
+                manual_rank: 0,
             },
             Team {
                 name: "Beta".to_string(),
@@ -970,6 +1008,7 @@ mod tests {
                 ],
                 division: None,
                 exhibition: false,
+                manual_rank: 0,
             },
         ];
 
