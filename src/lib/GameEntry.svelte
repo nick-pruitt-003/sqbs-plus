@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
+  import { normalizeGp } from "$lib/validation";
 
   let { tournament, onChange } = $props<{ tournament: any; onChange: (t: any) => void }>();
 
@@ -24,6 +25,7 @@
     if (idx < 0 || idx >= total) return;
     currentIdx = idx;
     draft = JSON.parse(JSON.stringify(games[idx]));
+    gpText = {};  // in-progress text belongs to the game we just left
   }
 
   // ── New game ──────────────────────────────────────────────────────────────
@@ -82,10 +84,6 @@
   // `performAutoSaveAndCleanup` — switching tabs unmounts this component, and
   // silently dropping a fully entered game is the worse failure mode.
   onDestroy(() => {
-    // Commit whatever field still has focus first — GP inputs write to the
-    // draft on blur, and unmounting doesn't always fire one. Mac SQBS does the
-    // same thing with `makeFirstResponder:nil` before its auto-save.
-    (document.activeElement as HTMLElement | null)?.blur();
     if (dirty) saveGame();
   });
 
@@ -146,37 +144,44 @@
     draft = { ...draft, [sideKey]: updated };
   }
 
-  // Games played accepts a decimal (0.5) or a slash fraction (11/23 = in for
-  // 11 of 23 tossups), matching the NAQT guide and Mac SQBS 2.0.1 entry rules.
-  // Mirrors `parse_games_played` in sqbs_format.rs.
-  // Whole-string match only: parseFloat would happily read "11abc" as 11.
-  const NUMERIC = /^[+-]?(\d+\.?\d*|\.\d+)$/;
+  // ── Games played ──────────────────────────────────────────────────────────
+  // GP is written into the draft on every keystroke rather than on blur.
+  // Svelte tears the DOM down before onDestroy runs, so there is no moment at
+  // which an unmount handler could still flush a focused field — an edit left
+  // uncommitted at unmount would simply be lost.
+  //
+  // While a field is being typed in we show the raw text, so intermediate
+  // states like "11/" stay visible even though they parse to 0; the canonical
+  // rounded form comes back on blur.
+  let gpText = $state<Record<string, string>>({});
 
-  function toNumber(s: string): number | null {
-    const trimmed = s.trim();
-    if (!NUMERIC.test(trimmed)) return null;
-    const val = parseFloat(trimmed);
-    return isFinite(val) ? val : null;
+  const gpKey = (sideKey: string, pi: number) => `${sideKey}:${pi}`;
+
+  function displayGp(gp: number): string {
+    return String(Number(gp.toFixed(4)));
   }
 
-  function normalizeGp(raw: string): number {
-    const slash = raw.indexOf("/");
-    if (slash !== -1) {
-      const num = toNumber(raw.slice(0, slash));
-      const den = toNumber(raw.slice(slash + 1));
-      if (num === null || den === null || den === 0) return 0;
-      const val = num / den;
-      return isFinite(val) ? val : 0;
-    }
-    return toNumber(raw) ?? 0;
+  function gpValue(sideKey: string, pi: number, gp: number): string {
+    return gpText[gpKey(sideKey, pi)] ?? displayGp(gp);
   }
 
   function setPlayerGp(sideKey: string, pi: number, raw: string) {
-    const gp = Math.max(0, normalizeGp(raw));
+    gpText = { ...gpText, [gpKey(sideKey, pi)]: raw };
     const side = draft[sideKey];
+    const current = side.player_scores[pi];
+    if (!current) return;
+    const gp = Math.max(0, normalizeGp(raw));
+    if (gp === current.gp) return;
     const scores = side.player_scores.map((p: any, i: number) =>
       i === pi && p ? { ...p, gp } : p);
     draft = { ...draft, [sideKey]: { ...side, player_scores: scores } };
+  }
+
+  /// Drop the in-progress text so the field shows the canonical value again.
+  function commitGpText(sideKey: string, pi: number) {
+    const rest = { ...gpText };
+    delete rest[gpKey(sideKey, pi)];
+    gpText = rest;
   }
 
   function setPlayerQ(sideKey: string, pi: number, qi: number, value: number) {
@@ -261,10 +266,11 @@
                   <td class="td-gp">
                     {#if active && p}
                       <input class="gp-input" type="text"
-                        value={Number(p.gp.toFixed(4))}
+                        value={gpValue(sideKey, pi, p.gp)}
                         aria-label={`Games played by ${player.name || `player ${pi + 1}`}`}
                         title="Games played. 1 = full game. Enter a decimal (0.5) or a slash fraction (11/23)."
-                        onblur={(e) => setPlayerGp(sideKey, pi, (e.target as HTMLInputElement).value)} />
+                        oninput={(e) => setPlayerGp(sideKey, pi, (e.target as HTMLInputElement).value)}
+                        onblur={() => commitGpText(sideKey, pi)} />
                     {:else}
                       <span class="no-play">—</span>
                     {/if}

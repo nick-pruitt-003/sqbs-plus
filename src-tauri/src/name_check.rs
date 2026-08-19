@@ -109,7 +109,10 @@ pub fn name_has_unusual_capitalization(name: &str) -> bool {
         // generational suffixes. Only well-formed numerals are excused —
         // merely being spelled from roman letters is not enough, or names like
         // "CIVIL" and "MILL" would slip through.
+        // Caseless scripts (CJK, Hebrew, …) equal their own uppercasing, so
+        // require at least one actual capital before calling a token ALL-CAPS.
         if token == token.to_uppercase()
+            && token.chars().any(char::is_uppercase)
             && token.chars().count() >= 3
             && !is_roman_numeral(token)
         {
@@ -169,6 +172,14 @@ mod tests {
         // ("MIX" is left out on purpose: it really is 1009.)
         for n in ["CIVIL", "MILL", "DIM", "LIL"] {
             assert!(unusual(n), "{n} should warn");
+        }
+    }
+
+    #[test]
+    fn caseless_scripts_are_quiet() {
+        // These equal their own uppercasing but contain no capitals.
+        for n in ["山田太郎", "田中", "עברית", "こんにちは"] {
+            assert!(!unusual(n), "{n} should not warn");
         }
     }
 

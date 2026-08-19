@@ -1,5 +1,6 @@
 <script lang="ts">
   import { commands } from "$lib/bindings";
+  import { clampManualRank } from "$lib/validation";
 
   let { tournament, onChange } = $props<{ tournament: any; onChange: (t: any) => void }>();
 
@@ -34,14 +35,8 @@
     }
   }
 
-  /// Manual ranks name a placement, so anything outside 1..=team count is
-  /// meaningless. The `max` attribute alone doesn't stop typed input.
   function setManualRank(ti: number, raw: string) {
-    const parsed = parseInt(raw, 10);
-    const rank = Number.isFinite(parsed)
-      ? Math.min(Math.max(parsed, 0), tournament.teams.length)
-      : 0;
-    updateTeamField(ti, "manual_rank", rank);
+    updateTeamField(ti, "manual_rank", clampManualRank(raw, tournament.teams.length));
   }
 
   function update(field: string, value: any) {
@@ -77,7 +72,14 @@
   }
 
   function removeTeam(i: number) {
-    const teams = tournament.teams.filter((_: any, idx: number) => idx !== i);
+    // Ranks above the new team count no longer name a placement, and the file
+    // parser drops them on reload — so drop them here rather than persist a
+    // value the next load won't honor.
+    const remaining = tournament.teams.filter((_: any, idx: number) => idx !== i);
+    const teams = remaining.map((t: any) => ({
+      ...t,
+      manual_rank: clampManualRank(t.manual_rank ?? 0, remaining.length),
+    }));
     onChange({ ...tournament, teams });
   }
 

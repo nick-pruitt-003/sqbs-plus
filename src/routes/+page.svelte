@@ -111,14 +111,21 @@
       .filter((_, i) => !drop.has(i))
       .map((g, i) => ({ ...g, game_index: String(i + 1) }));
     onTournamentChanged({ ...tournament, games });
+    // Capture our own update; a later edit can replace `pendingUpdate` while
+    // we wait, and rolling back to `previous` then would discard that edit.
+    const ourUpdate = pendingUpdate;
     duplicateGames = [];
+    if (!ourUpdate) return;
     try {
       // Deleting games is destructive — only let the warning go once the
       // backend has actually accepted the shorter game list.
-      if (pendingUpdate) await pendingUpdate;
+      await ourUpdate;
     } catch {
-      tournament = previous;
-      duplicateGames = removed;
+      if (pendingUpdate === ourUpdate) {
+        pendingUpdate = null;
+        tournament = previous;
+        duplicateGames = removed;
+      }
     }
   }
 
