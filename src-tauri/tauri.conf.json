@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SQBS Plus",
+  "version": "0.1.0",
+  "identifier": "com.sqbs.sqbs-plus",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "SQBS Plus",
+        "width": 960,
+        "height": 640,
+        "minWidth": 960,
+        "minHeight": 640
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["sqbs"],
+        "name": "SQBS Tournament",
+        "description": "SQBS Tournament File",
+        "role": "Editor",
+        "mimeType": "application/x-sqbs"
+      },
+      {
+        "ext": ["qzx"],
+        "name": "SQBS Tournament (Legacy)",
+        "description": "SQBS Legacy Tournament File",
+        "role": "Editor",
+        "mimeType": "application/x-sqbs"
+      }
+    ]
+  }
+}

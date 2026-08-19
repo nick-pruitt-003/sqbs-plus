@@ -1,0 +1,39 @@
+[package]
+name = "sqbs-plus"
+version = "0.1.0"
+description = "SQBS Plus — cross-platform quizbowl tournament scoring"
+authors = []
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "sqbs_plus_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2.4.2"
+tauri-plugin-window-state = "2.4.1"
+tauri-plugin-store = "2.4.3"
+tauri-plugin-deep-link = "2.4.9"
+tauri-specta = { version = "2.0.0-rc.25", features = ["derive", "typescript"] }
+specta = "2.0.0-rc.25"
+specta-typescript = "0.0.12"
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+panic = "abort"       # strip unwinding machinery
+codegen-units = 1     # single CGU enables best LTO
+lto = true            # link-time optimization
+opt-level = "s"       # optimize for binary size
+strip = true          # remove debug symbols from binary
+

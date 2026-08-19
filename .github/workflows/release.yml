@@ -1,0 +1,105 @@
+name: Build & Release
+
+# Runs on every version tag (v0.1.0, v1.2.3, etc.)
+# Also runnable manually from the Actions tab for testing
+# (manual runs build & upload artifacts but do not create a release).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Required for tauri-action to create/update GitHub releases
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: "--bundles nsis,msi"
+          - platform: ubuntu-22.04
+            args: "--bundles deb"
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Linux system libs ──────────────────────────────────────────────────
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libdbus-1-dev \
+            pkg-config
+
+      # ── Node.js ────────────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        with:
+          node-version: 22
+          cache: npm
+
+      # ── Rust ───────────────────────────────────────────────────────────────
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # ── Frontend ───────────────────────────────────────────────────────────
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ── Tauri build ────────────────────────────────────────────────────────
+      # Tag pushes: create a draft GitHub release with the installers attached.
+      # Manual runs: build only (no release created — tagName is left unset).
+      - name: Build (tag push — create release)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "SQBS Plus ${{ github.ref_name }}"
+          releaseBody: |
+            ## What's in this release
+
+            | Platform | File |
+            |----------|------|
+            | Windows  | `SQBS-Plus_*_x64-setup.exe` (NSIS) or `SQBS-Plus_*_x64_en-US.msi` |
+            | Linux    | `sqbs-plus_*_amd64.deb` |
+
+            Install the appropriate file for your operating system.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      - name: Build (manual run — artifacts only)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        with:
+          args: ${{ matrix.args }}
