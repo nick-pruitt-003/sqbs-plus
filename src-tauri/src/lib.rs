@@ -6,6 +6,7 @@
 mod models;
 mod sqbs_format;
 mod reports;
+mod name_check;
 
 use models::Tournament;
 use sqbs_format::{SqbsParser, write_sqbs};
@@ -100,6 +101,25 @@ fn generate_reports(dir: String, state: State<AppState>) -> Result<Vec<String>, 
     reports::generate_all_reports(&tournament, &dir).map_err(|e| e.to_string())
 }
 
+/// Indexes of games that repeat an earlier game's team pair and round.
+/// Advisory only — same-round rematches are legal, so the UI offers rather
+/// than performs removal.
+#[tauri::command]
+#[specta::specta]
+fn find_duplicate_games(state: State<AppState>) -> Result<Vec<usize>, String> {
+    state.tournament.lock()
+        .map(|t| t.duplicate_game_indexes())
+        .map_err(|e| format!("state corrupted: {e}"))
+}
+
+/// Warning W-8: does this team/player name look like a capitalization typo?
+/// The frontend calls this on field commit when W-8 is enabled.
+#[tauri::command]
+#[specta::specta]
+fn check_name_capitalization(name: String) -> bool {
+    name_check::name_has_unusual_capitalization(&name)
+}
+
 #[tauri::command]
 #[specta::specta]
 fn open_in_browser(path: String, app: tauri::AppHandle) -> Result<(), String> {
@@ -120,6 +140,8 @@ pub fn run() {
             update_tournament,
             get_file_path,
             generate_reports,
+            find_duplicate_games,
+            check_name_capitalization,
             open_in_browser,
         ]);
 

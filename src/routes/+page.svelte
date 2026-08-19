@@ -21,6 +21,10 @@
   let lastError = $state<string | null>(null);
   let recentFiles = $state<string[]>([]);
   let isDragOver = $state(false);
+  let duplicateGames = $state<number[]>([]);
+
+  /// At most this many duplicate games are listed by name; the rest are counted.
+  const MAX_LISTED_DUPES = 15;
 
   // Tracks the in-flight update_tournament promise so saveFile can await it
   let pendingUpdate: Promise<Tournament> | null = null;
@@ -67,10 +71,40 @@
       isDirty = false;
       lastError = null;
       await addRecentFile(path);
+      await checkForDuplicateGames();
     } catch (e: unknown) {
       lastError = String(e);
       await removeRecentFile(path);
     }
+  }
+
+  // Games repeating an earlier game's team pair and round — usually the result
+  // of a merge that carried games over twice. Advisory: same-round rematches
+  // are legal, so we describe the games and let the user decide.
+  async function checkForDuplicateGames() {
+    duplicateGames = [];
+    try {
+      duplicateGames = await commands.findDuplicateGames();
+    } catch {
+      // non-critical — a failed check should never block opening a file
+    }
+  }
+
+  function describeGame(i: number): string {
+    const g = tournament?.games[i];
+    if (!g) return `Game ${i + 1}`;
+    const nameOf = (ti: number) => tournament?.teams[ti]?.name ?? "?";
+    return `Round ${g.round}: ${nameOf(g.team_a.team_index)} vs ${nameOf(g.team_b.team_index)}`;
+  }
+
+  function removeDuplicateGames() {
+    if (!tournament || duplicateGames.length === 0) return;
+    const drop = new Set(duplicateGames);
+    const games = tournament.games
+      .filter((_, i) => !drop.has(i))
+      .map((g, i) => ({ ...g, game_index: String(i + 1) }));
+    onTournamentChanged({ ...tournament, games });
+    duplicateGames = [];
   }
 
   async function newTournament() {
@@ -273,6 +307,27 @@
     <div class="error-banner" role="alert">
       <span>{lastError}</span>
       <button class="error-dismiss" onclick={() => (lastError = null)}>&#x2715;</button>
+    </div>
+  {/if}
+
+  {#if duplicateGames.length > 0}
+    <div class="dupe-banner" role="status">
+      <div class="dupe-text">
+        <b>{duplicateGames.length} possible duplicate game{duplicateGames.length === 1 ? "" : "s"}</b>
+        — these match an earlier game (same teams and round) and may be counted twice:
+        <ul>
+          {#each duplicateGames.slice(0, MAX_LISTED_DUPES) as i}
+            <li>{describeGame(i)}</li>
+          {/each}
+          {#if duplicateGames.length > MAX_LISTED_DUPES}
+            <li>…and {duplicateGames.length - MAX_LISTED_DUPES} more.</li>
+          {/if}
+        </ul>
+      </div>
+      <div class="dupe-actions">
+        <button class="dupe-btn" onclick={removeDuplicateGames}>Remove Duplicates</button>
+        <button class="error-dismiss" onclick={() => (duplicateGames = [])}>&#x2715;</button>
+      </div>
     </div>
   {/if}
 
@@ -592,6 +647,29 @@
     background: none; border: none; cursor: pointer;
     color: inherit; font-size: 12px; padding: 0 4px; line-height: 1;
   }
+
+  .dupe-banner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 14px;
+    background: rgba(255, 200, 0, 0.12);
+    border-bottom: 1px solid rgba(200, 150, 0, 0.4);
+    font-size: 12px;
+    color: var(--text);
+  }
+  .dupe-text ul { margin: 4px 0 0; padding-left: 18px; }
+  .dupe-text li { line-height: 1.5; }
+  .dupe-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .dupe-btn {
+    padding: 3px 10px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 12px; color: var(--text);
+  }
+  .dupe-btn:hover { background: var(--bg-sunken); }
 
   /* ── Content area ──────────────────────────────────────────────────────── */
   .content {

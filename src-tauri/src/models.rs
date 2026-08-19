@@ -12,6 +12,11 @@ pub struct Team {
     pub players: Vec<Player>,
     pub division: Option<String>,
     pub exhibition: bool,
+    /// User-assigned final-rank override (1-indexed). 0 = auto (computed) rank.
+    /// Persisted in the optional trailing `SQBSMANUALRANKS` block (a 2.0.1
+    /// extension); parallels YellowFruit's `Team.overallRank.position`.
+    #[serde(default)]
+    pub manual_rank: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, specta::Type)]
@@ -179,6 +184,25 @@ impl Default for Tournament {
 }
 
 impl Tournament {
+    /// Indexes of games that duplicate an earlier game (same unordered team
+    /// pair and round). The first occurrence is kept; later matches are
+    /// reported. Mirrors Mac SQBS `indexesOfDuplicateGames`, which catches
+    /// games counted twice after a merge — legitimate rematches in the same
+    /// round are possible, so this is advisory, not an error.
+    #[must_use]
+    pub fn duplicate_game_indexes(&self) -> Vec<usize> {
+        let mut seen = std::collections::HashSet::new();
+        let mut dupes = Vec::new();
+        for (i, g) in self.games.iter().enumerate() {
+            let (a, b) = (g.team_a.team_index, g.team_b.team_index);
+            let key = (a.min(b), a.max(b), g.round);
+            if !seen.insert(key) {
+                dupes.push(i);
+            }
+        }
+        dupes
+    }
+
     pub fn bouncebacks_enabled(&self) -> bool {
         self.scoring.auto_track >= 3
     }
@@ -246,5 +270,44 @@ mod tests {
     fn default_warn_flags() {
         let t = Tournament::default();
         assert_eq!(t.warn_flags, 0b0111_1110);
+    }
+
+    fn game(round: u32, a: usize, b: usize) -> Game {
+        let side = |team_index: usize| TeamScore {
+            team_index,
+            total_points: 0,
+            bonus_heard: 0, bonus_points: 0,
+            bb_heard: 0, bb_points: 0,
+            ot_gets: 0, lightning_points: 0,
+            player_scores: Vec::new(),
+        };
+        Game {
+            game_index: String::new(),
+            round,
+            team_a: side(a),
+            team_b: side(b),
+            tossups_heard: 20,
+            overtime: false,
+            forfeit: false,
+        }
+    }
+
+    #[test]
+    fn duplicate_games_detected_regardless_of_side() {
+        let mut t = Tournament::default();
+        t.games = vec![
+            game(1, 0, 1),
+            game(1, 1, 0), // same pair, same round, sides swapped → duplicate
+            game(2, 0, 1), // different round → not a duplicate
+            game(1, 0, 2), // different pair → not a duplicate
+        ];
+        assert_eq!(t.duplicate_game_indexes(), vec![1]);
+    }
+
+    #[test]
+    fn no_duplicates_in_clean_schedule() {
+        let mut t = Tournament::default();
+        t.games = vec![game(1, 0, 1), game(1, 2, 3), game(2, 0, 2)];
+        assert!(t.duplicate_game_indexes().is_empty());
     }
 }

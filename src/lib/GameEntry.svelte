@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+
   let { tournament, onChange } = $props<{ tournament: any; onChange: (t: any) => void }>();
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -70,6 +72,19 @@
     onChange({ ...tournament, games });
   }
 
+  // Unsaved edits exist when the draft no longer matches the stored game.
+  const dirty = $derived(
+    currentIdx !== null && draft !== null &&
+    JSON.stringify(draft) !== JSON.stringify(tournament.games[currentIdx])
+  );
+
+  // Auto-save an in-progress game when leaving Game Entry, matching Mac SQBS
+  // `performAutoSaveAndCleanup` — switching tabs unmounts this component, and
+  // silently dropping a fully entered game is the worse failure mode.
+  onDestroy(() => {
+    if (dirty) saveGame();
+  });
+
   function deleteGame() {
     if (currentIdx === null) return;
     const games = tournament.games.filter((_: any, i: number) => i !== currentIdx);
@@ -125,6 +140,30 @@
     const updated = { ...side, player_scores: scores };
     updated.total_points = calcSideTotal(updated);
     draft = { ...draft, [sideKey]: updated };
+  }
+
+  // Games played accepts a decimal (0.5) or a slash fraction (11/23 = in for
+  // 11 of 23 tossups), matching the NAQT guide and Mac SQBS 2.0.1 entry rules.
+  // Mirrors `parse_games_played` in sqbs_format.rs.
+  function normalizeGp(raw: string): number {
+    const trimmed = raw.trim();
+    const slash = trimmed.indexOf("/");
+    if (slash !== -1) {
+      const num = parseFloat(trimmed.slice(0, slash));
+      const den = parseFloat(trimmed.slice(slash + 1));
+      if (!isFinite(num) || !isFinite(den) || den === 0) return 0;
+      return num / den;
+    }
+    const val = parseFloat(trimmed);
+    return isFinite(val) ? val : 0;
+  }
+
+  function setPlayerGp(sideKey: string, pi: number, raw: string) {
+    const gp = Math.max(0, normalizeGp(raw));
+    const side = draft[sideKey];
+    const scores = side.player_scores.map((p: any, i: number) =>
+      i === pi && p ? { ...p, gp } : p);
+    draft = { ...draft, [sideKey]: { ...side, player_scores: scores } };
   }
 
   function setPlayerQ(sideKey: string, pi: number, qi: number, value: number) {
@@ -187,7 +226,8 @@
           <table class="player-table">
             <thead>
               <tr>
-                <th class="th-gp">GP</th>
+                <th class="th-in">In</th>
+                <th class="th-gp" title="Games played. 1 = full game. Enter a decimal (0.5) or a slash fraction (11/23).">GP</th>
                 <th class="th-name">Player</th>
                 {#each activeCols as col}
                   <th class="th-q">{col.v}</th>
@@ -200,9 +240,19 @@
                 {@const active = isActive(sideKey, pi)}
                 {@const p = ps(sideKey, pi)}
                 <tr class:active>
-                  <td class="td-gp">
+                  <td class="td-in">
                     <input type="checkbox" checked={active}
                       onchange={(e) => setPlayerActive(sideKey, pi, (e.target as HTMLInputElement).checked)} />
+                  </td>
+                  <td class="td-gp">
+                    {#if active && p}
+                      <input class="gp-input" type="text"
+                        value={Number(p.gp.toFixed(4))}
+                        title="Games played. 1 = full game. Enter a decimal (0.5) or a slash fraction (11/23)."
+                        onblur={(e) => setPlayerGp(sideKey, pi, (e.target as HTMLInputElement).value)} />
+                    {:else}
+                      <span class="no-play">—</span>
+                    {/if}
                   </td>
                   <td class="td-name">{player.name}</td>
                   {#if active && p}
@@ -402,11 +452,13 @@
 
   tr.active td { background: rgba(0, 113, 227, 0.05); }
 
-  .th-gp { width: 26px; }
+  .th-in { width: 26px; }
+  .th-gp { width: 44px; }
   .th-name { text-align: left; min-width: 60px; }
   .th-q { width: 40px; }
   .th-pts { width: 36px; }
-  .td-gp { text-align: center; }
+  .td-in, .td-gp { text-align: center; }
+  .gp-input { width: 40px; text-align: center; }
   .td-name { text-align: left; color: var(--text); }
   .td-pts { text-align: right; font-weight: 700; color: var(--text); }
   .no-play { color: var(--text-3); text-align: center; }

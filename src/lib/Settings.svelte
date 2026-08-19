@@ -16,7 +16,9 @@
     onChange({ ...tournament, [field]: value });
   }
 
-  // Warnings bitmask: W1=bit7, W2=bit6, W3=bit5, W4=bit4, W5=bit3, W6=bit2, W7=bit1
+  // Warnings bitmask: W1=bit7, W2=bit6, W3=bit5, W4=bit4, W5=bit3, W6=bit2,
+  // W7=bit1, W8=bit0 (W-8 is a 2.0.1 addition in the previously-unused low bit;
+  // older parsers ignore it)
   function getWarn(n: number): boolean {
     const bit = 1 << (8 - n);
     return (tournament.warn_flags & bit) !== 0;
@@ -65,6 +67,7 @@
     [5, "Team bonus points per bonus heard is < 0 or > 30 (W-5)", false],
     [6, "Bonus points calculated > 0 but bonus heard is zero (W-6)", false],
     [7, "Negative value entered for toss-ups heard (W-7)", false],
+    [8, "Unusual capitalization in team/player names (W-8)", false],
   ]);
 
   const REPORT_ROWS: [string, string, string][] = [

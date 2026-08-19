@@ -10,6 +10,12 @@ const MAX_MEMBER_COUNT: i64 = 100;
 /// Real tournaments never have more than a handful; 50 is a generous cap.
 const MAX_DIVISIONS: i64 = 50;
 
+/// Marker line introducing the optional trailing manual-rank-override block
+/// (a 2.0.1 extension). Written only when at least one override exists, so
+/// files without overrides stay byte-compatible with Windows SQBS / YellowFruit,
+/// which stop parsing after the sections they know and ignore trailing data.
+const MANUAL_RANKS_MARKER: &str = "SQBSMANUALRANKS";
+
 pub struct SqbsParser<R: BufRead> {
     reader: R,
     lines: Vec<String>,
@@ -87,6 +93,7 @@ impl<R: BufRead> SqbsParser<R> {
                 players,
                 division: None,
                 exhibition: false,
+                manual_rank: 0,
             });
         }
 
@@ -250,6 +257,23 @@ impl<R: BufRead> SqbsParser<R> {
             }
         }
 
+        // Optional trailing manual-rank overrides (2.0.1 extension).
+        // Peek without consuming, so legacy files load unchanged.
+        if self.lines.get(self.pos).is_some_and(|l| l.trim() == MANUAL_RANKS_MARKER) {
+            self.pos += 1;
+            if let Ok(count) = self.next_int() {
+                if count == team_count as i64 && self.pos + team_count <= self.lines.len() {
+                    for i in 0..team_count {
+                        let rank = self.next_int().unwrap_or(0);
+                        if rank > 0 {
+                            tournament.teams[i].manual_rank =
+                                u32::try_from(rank).unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(tournament)
     }
 
@@ -333,7 +357,7 @@ impl<R: BufRead> SqbsParser<R> {
             for _ in 0..6 { let _ = self.next_line()?; }
             return Ok(None);
         }
-        let gp: f32 = self.next_line()?.trim().parse().unwrap_or(0.0);
+        let gp = parse_games_played(&self.next_line()?);
         let q0 = self.next_int()? as i32;
         let q1 = self.next_int()? as i32;
         let q2 = self.next_int()? as i32;
@@ -458,7 +482,33 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
         writeln!(w, "{}", i32::from(team.exhibition))?;
     }
 
+    // Manual rank overrides: emitted only when at least one team has one, so
+    // untouched tournaments stay byte-identical to the legacy format (Windows
+    // SQBS / YellowFruit ignore trailing data they don't recognize).
+    if t.teams.iter().any(|team| team.manual_rank > 0) {
+        writeln!(w, "{MANUAL_RANKS_MARKER}")?;
+        writeln!(w, "{team_count}")?;
+        for team in &t.teams {
+            writeln!(w, "{}", team.manual_rank)?;
+        }
+    }
+
     Ok(())
+}
+
+/// Parse a games-played field, which may be a decimal (`0.5`) or a slash
+/// fraction (`11/23` = in for 11 of 23 tossups). Mac SQBS normalizes to a
+/// decimal at entry time as of 2.0.1, but older Mac files and Windows SQBS
+/// files can carry the fraction form. Unparseable input yields 0.0.
+fn parse_games_played(s: &str) -> f32 {
+    let trimmed = s.trim();
+    if let Some((num, den)) = trimmed.split_once('/') {
+        let n: f32 = num.trim().parse().unwrap_or(0.0);
+        let d: f32 = den.trim().parse().unwrap_or(0.0);
+        if d == 0.0 { 0.0 } else { n / d }
+    } else {
+        trimmed.parse().unwrap_or(0.0)
+    }
 }
 
 fn write_player_record<W: Write>(w: &mut W, ps: Option<&PlayerScore>) -> io::Result<()> {
@@ -498,8 +548,8 @@ mod tests {
         t.name = "My Tournament".to_string();
         t.reports.base_name = "mytest".to_string();
         t.teams = vec![
-            Team { name: "Alpha".to_string(), players: vec![Player { name: "Alice".to_string() }], division: None, exhibition: false },
-            Team { name: "Beta".to_string(),  players: vec![Player { name: "Bob".to_string() }],  division: None, exhibition: false },
+            Team { name: "Alpha".to_string(), players: vec![Player { name: "Alice".to_string() }], division: None, exhibition: false, manual_rank: 0 },
+            Team { name: "Beta".to_string(),  players: vec![Player { name: "Bob".to_string() }],  division: None, exhibition: false, manual_rank: 0 },
         ];
         t
     }
@@ -653,5 +703,43 @@ mod tests {
         let t2 = round_trip(&Tournament::default());
         assert_eq!(t2.teams.len(), 0);
         assert_eq!(t2.games.len(), 0);
+    }
+
+    #[test]
+    fn round_trip_manual_rank_overrides() {
+        let mut t = minimal();
+        t.teams[1].manual_rank = 1;
+        let t2 = round_trip(&t);
+        assert_eq!(t2.teams[0].manual_rank, 0);
+        assert_eq!(t2.teams[1].manual_rank, 1);
+    }
+
+    #[test]
+    fn no_manual_ranks_block_when_no_overrides() {
+        let mut buf = Vec::new();
+        write_sqbs(&mut buf, &minimal()).expect("write failed");
+        let text = String::from_utf8(buf).expect("utf8");
+        assert!(!text.contains(MANUAL_RANKS_MARKER));
+    }
+
+    #[test]
+    fn legacy_file_without_marker_still_parses() {
+        // A file written without the extension must load with ranks all zero.
+        let mut buf = Vec::new();
+        write_sqbs(&mut buf, &with_game()).expect("write failed");
+        let reader = BufReader::new(Cursor::new(buf));
+        let t = SqbsParser::new(reader).parse().expect("parse failed");
+        assert!(t.teams.iter().all(|team| team.manual_rank == 0));
+        assert_eq!(t.games.len(), 1);
+    }
+
+    #[test]
+    fn games_played_accepts_slash_fractions() {
+        assert!((parse_games_played("11/23") - 11.0 / 23.0).abs() < 1e-6);
+        assert!((parse_games_played(" 1/2 ") - 0.5).abs() < 1e-6);
+        assert!((parse_games_played("0.75") - 0.75).abs() < 1e-6);
+        assert!((parse_games_played("1") - 1.0).abs() < 1e-6);
+        assert!((parse_games_played("1/0")).abs() < 1e-6);
+        assert!((parse_games_played("junk")).abs() < 1e-6);
     }
 }

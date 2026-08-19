@@ -8,7 +8,7 @@ import * as TAURI_API_EVENT from "@tauri-apps/api/event";
 
 export type Player = { name: string }
 
-export type Team = { name: string; players: Player[]; division: string | null; exhibition: boolean }
+export type Team = { name: string; players: Player[]; division: string | null; exhibition: boolean; manual_rank: number }
 
 export type PlayerScore = { player_index: number; gp: number; q: [number, number, number, number]; points: number }
 
@@ -43,6 +43,12 @@ export const commands = {
     },
     async generateReports(dir: string): Promise<string[]> {
         return await TAURI_INVOKE("generate_reports", { dir });
+    },
+    async findDuplicateGames(): Promise<number[]> {
+        return await TAURI_INVOKE("find_duplicate_games");
+    },
+    async checkNameCapitalization(name: string): Promise<boolean> {
+        return await TAURI_INVOKE("check_name_capitalization", { name });
     },
     async openInBrowser(path: string): Promise<void> {
         return await TAURI_INVOKE("open_in_browser", { path });
