@@ -10,15 +10,38 @@
   const warn8Enabled = $derived((tournament.warn_flags & 1) !== 0);
   let nameWarning = $state<string | null>(null);
 
+  // Checks are async, so a slower earlier reply must not overwrite a later one.
+  let checkSeq = 0;
+
+  $effect(() => {
+    if (!warn8Enabled) {
+      checkSeq++;          // invalidate anything in flight
+      nameWarning = null;
+    }
+  });
+
   async function checkName(value: string) {
+    const seq = ++checkSeq;
     if (!warn8Enabled) return;
     const trimmed = value.trim();
     if (trimmed === "") return;
-    if (await commands.checkNameCapitalization(trimmed)) {
+    const unusual = await commands.checkNameCapitalization(trimmed);
+    if (seq !== checkSeq) return;  // superseded
+    if (unusual) {
       nameWarning = trimmed;
     } else if (nameWarning === trimmed) {
       nameWarning = null;
     }
+  }
+
+  /// Manual ranks name a placement, so anything outside 1..=team count is
+  /// meaningless. The `max` attribute alone doesn't stop typed input.
+  function setManualRank(ti: number, raw: string) {
+    const parsed = parseInt(raw, 10);
+    const rank = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 0), tournament.teams.length)
+      : 0;
+    updateTeamField(ti, "manual_rank", rank);
   }
 
   function update(field: string, value: any) {
@@ -220,9 +243,9 @@
                 <input type="number" class="cell-rank" min="1" max={tournament.teams.length}
                   value={team.manual_rank > 0 ? team.manual_rank : ""}
                   placeholder="—"
+                  aria-label={`Final rank override for ${team.name || `team ${ti + 1}`}`}
                   title="Manual final-rank override. Blank = automatic (computed from standings)."
-                  oninput={(e) => updateTeamField(ti, "manual_rank",
-                    Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0))} />
+                  oninput={(e) => setManualRank(ti, (e.target as HTMLInputElement).value)} />
               </td>
               {#if tournament.uses_divisions}
                 <td class="td-div">

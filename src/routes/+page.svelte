@@ -22,6 +22,7 @@
   let recentFiles = $state<string[]>([]);
   let isDragOver = $state(false);
   let duplicateGames = $state<number[]>([]);
+  let duplicateCheckGen = 0;
 
   /// At most this many duplicate games are listed by name; the rest are counted.
   const MAX_LISTED_DUPES = 15;
@@ -81,10 +82,14 @@
   // Games repeating an earlier game's team pair and round — usually the result
   // of a merge that carried games over twice. Advisory: same-round rematches
   // are legal, so we describe the games and let the user decide.
+  // Indexes are only meaningful for the tournament they were computed from, so
+  // a result that lands after the tournament changed must be discarded.
   async function checkForDuplicateGames() {
+    const gen = ++duplicateCheckGen;
     duplicateGames = [];
     try {
-      duplicateGames = await commands.findDuplicateGames();
+      const found = await commands.findDuplicateGames();
+      if (gen === duplicateCheckGen) duplicateGames = found;
     } catch {
       // non-critical — a failed check should never block opening a file
     }
@@ -97,14 +102,24 @@
     return `Round ${g.round}: ${nameOf(g.team_a.team_index)} vs ${nameOf(g.team_b.team_index)}`;
   }
 
-  function removeDuplicateGames() {
+  async function removeDuplicateGames() {
     if (!tournament || duplicateGames.length === 0) return;
-    const drop = new Set(duplicateGames);
+    const previous = tournament;
+    const removed = duplicateGames;
+    const drop = new Set(removed);
     const games = tournament.games
       .filter((_, i) => !drop.has(i))
       .map((g, i) => ({ ...g, game_index: String(i + 1) }));
     onTournamentChanged({ ...tournament, games });
     duplicateGames = [];
+    try {
+      // Deleting games is destructive — only let the warning go once the
+      // backend has actually accepted the shorter game list.
+      if (pendingUpdate) await pendingUpdate;
+    } catch {
+      tournament = previous;
+      duplicateGames = removed;
+    }
   }
 
   async function newTournament() {
@@ -112,6 +127,9 @@
       tournament = await commands.newTournament();
       isDirty = false;
       lastError = null;
+      // Stale indexes would point into games that no longer exist.
+      duplicateCheckGen++;
+      duplicateGames = [];
     } catch (e: unknown) {
       lastError = String(e);
     }
@@ -326,7 +344,8 @@
       </div>
       <div class="dupe-actions">
         <button class="dupe-btn" onclick={removeDuplicateGames}>Remove Duplicates</button>
-        <button class="error-dismiss" onclick={() => (duplicateGames = [])}>&#x2715;</button>
+        <button class="error-dismiss" aria-label="Dismiss duplicate-game warning"
+          onclick={() => (duplicateGames = [])}>&#x2715;</button>
       </div>
     </div>
   {/if}

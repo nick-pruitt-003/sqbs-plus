@@ -15,7 +15,55 @@ const PARTICLES: &[&str] = &[
 /// pseudonyms and grades like "(Wesley)" or "(12)" don't trip the heuristic.
 const WRAPPING: &[char] = &['(', ')', '[', ']', '{', '}', '.', ','];
 
-const ROMAN: &[char] = &['I', 'V', 'X', 'L', 'C', 'D', 'M'];
+/// True for a canonically spelled roman numeral in 1..=3999 ("III", "XIV").
+/// Round-tripping through the canonical spelling rejects letter soup that
+/// merely uses roman characters ("CIVIL", "MILL", "DIM").
+fn is_roman_numeral(s: &str) -> bool {
+    const VALUES: [(char, u32); 7] = [
+        ('I', 1), ('V', 5), ('X', 10), ('L', 50), ('C', 100), ('D', 500), ('M', 1000),
+    ];
+    let value_of = |c: char| VALUES.iter().find(|(ch, _)| *ch == c).map(|(_, v)| *v);
+
+    let chars: Vec<char> = s.chars().collect();
+    if chars.is_empty() {
+        return false;
+    }
+    // Signed accumulator: a leading subtractive pair can dip below zero
+    // ("IM"), which is not a numeral but must not overflow on the way out.
+    let mut total: i64 = 0;
+    for (i, &c) in chars.iter().enumerate() {
+        let Some(v) = value_of(c) else { return false };
+        let next = chars.get(i + 1).copied().and_then(value_of);
+        if next.is_some_and(|n| n > v) {
+            total -= i64::from(v);
+        } else {
+            total += i64::from(v);
+        }
+    }
+    u32::try_from(total).ok()
+        .and_then(to_roman)
+        .is_some_and(|canonical| canonical == s)
+}
+
+/// Canonical roman spelling of `n`, or `None` outside 1..=3999.
+fn to_roman(n: u32) -> Option<String> {
+    const TABLE: [(u32, &str); 13] = [
+        (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
+        (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+    ];
+    if n == 0 || n > 3999 {
+        return None;
+    }
+    let mut out = String::new();
+    let mut rem = n;
+    for (value, numeral) in TABLE {
+        while rem >= value {
+            out.push_str(numeral);
+            rem -= value;
+        }
+    }
+    Some(out)
+}
 
 /// Returns true when `name` looks like a capitalization typo.
 #[must_use]
@@ -29,8 +77,11 @@ pub fn name_has_unusual_capitalization(name: &str) -> bool {
         if token.is_empty() || !token.chars().any(char::is_alphabetic) {
             continue; // empty or non-letter token (numbers, symbols)
         }
-        if PARTICLES.contains(&token.to_lowercase().as_str()) {
-            continue; // whitelisted lowercase particle
+        // The whitelist exists so lowercase particles don't trip Rule 1; an
+        // uppercase variant ("VAN") is not a particle spelling and still gets
+        // the all-caps check.
+        if PARTICLES.contains(&token) {
+            continue;
         }
         // Whitelist Mc / Mac / O' / D' / L' name patterns with internal caps.
         let mc_mac_o = token.chars().count() >= 3
@@ -54,10 +105,13 @@ pub fn name_has_unusual_capitalization(name: &str) -> bool {
                 }
             }
         }
-        // Rule 3: ALL-CAPS token of length >= 3 (e.g. "SMITH"), excluding roman numerals.
+        // Rule 3: ALL-CAPS token of length >= 3 (e.g. "SMITH"), excluding
+        // generational suffixes. Only well-formed numerals are excused —
+        // merely being spelled from roman letters is not enough, or names like
+        // "CIVIL" and "MILL" would slip through.
         if token == token.to_uppercase()
             && token.chars().count() >= 3
-            && !token.trim_matches(ROMAN).is_empty()
+            && !is_roman_numeral(token)
         {
             return true;
         }
@@ -106,6 +160,32 @@ mod tests {
             "Henry VIII",
         ] {
             assert!(!unusual(n), "{n} should not warn");
+        }
+    }
+
+    #[test]
+    fn roman_lookalikes_still_warn() {
+        // Spelled from roman letters, but not numerals — must not be excused.
+        // ("MIX" is left out on purpose: it really is 1009.)
+        for n in ["CIVIL", "MILL", "DIM", "LIL"] {
+            assert!(unusual(n), "{n} should warn");
+        }
+    }
+
+    #[test]
+    fn uppercase_particle_is_not_whitelisted() {
+        // The whitelist covers lowercase spellings only; "VAN" is all-caps.
+        assert!(unusual("Ludwig VAN Beethoven"));
+    }
+
+    #[test]
+    fn roman_numeral_validator() {
+        use super::is_roman_numeral;
+        for ok in ["I", "III", "IV", "VIII", "XIV", "XL", "MCMXCIV", "MMXXVI"] {
+            assert!(is_roman_numeral(ok), "{ok} should be a numeral");
+        }
+        for bad in ["", "IIII", "VV", "IM", "CIVIL", "MILL", "ABC", "XIIX"] {
+            assert!(!is_roman_numeral(bad), "{bad} should not be a numeral");
         }
     }
 

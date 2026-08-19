@@ -82,6 +82,10 @@
   // `performAutoSaveAndCleanup` — switching tabs unmounts this component, and
   // silently dropping a fully entered game is the worse failure mode.
   onDestroy(() => {
+    // Commit whatever field still has focus first — GP inputs write to the
+    // draft on blur, and unmounting doesn't always fire one. Mac SQBS does the
+    // same thing with `makeFirstResponder:nil` before its auto-save.
+    (document.activeElement as HTMLElement | null)?.blur();
     if (dirty) saveGame();
   });
 
@@ -145,17 +149,26 @@
   // Games played accepts a decimal (0.5) or a slash fraction (11/23 = in for
   // 11 of 23 tossups), matching the NAQT guide and Mac SQBS 2.0.1 entry rules.
   // Mirrors `parse_games_played` in sqbs_format.rs.
-  function normalizeGp(raw: string): number {
-    const trimmed = raw.trim();
-    const slash = trimmed.indexOf("/");
-    if (slash !== -1) {
-      const num = parseFloat(trimmed.slice(0, slash));
-      const den = parseFloat(trimmed.slice(slash + 1));
-      if (!isFinite(num) || !isFinite(den) || den === 0) return 0;
-      return num / den;
-    }
+  // Whole-string match only: parseFloat would happily read "11abc" as 11.
+  const NUMERIC = /^[+-]?(\d+\.?\d*|\.\d+)$/;
+
+  function toNumber(s: string): number | null {
+    const trimmed = s.trim();
+    if (!NUMERIC.test(trimmed)) return null;
     const val = parseFloat(trimmed);
-    return isFinite(val) ? val : 0;
+    return isFinite(val) ? val : null;
+  }
+
+  function normalizeGp(raw: string): number {
+    const slash = raw.indexOf("/");
+    if (slash !== -1) {
+      const num = toNumber(raw.slice(0, slash));
+      const den = toNumber(raw.slice(slash + 1));
+      if (num === null || den === null || den === 0) return 0;
+      const val = num / den;
+      return isFinite(val) ? val : 0;
+    }
+    return toNumber(raw) ?? 0;
   }
 
   function setPlayerGp(sideKey: string, pi: number, raw: string) {
@@ -242,12 +255,14 @@
                 <tr class:active>
                   <td class="td-in">
                     <input type="checkbox" checked={active}
+                      aria-label={`${player.name || `Player ${pi + 1}`} played`}
                       onchange={(e) => setPlayerActive(sideKey, pi, (e.target as HTMLInputElement).checked)} />
                   </td>
                   <td class="td-gp">
                     {#if active && p}
                       <input class="gp-input" type="text"
                         value={Number(p.gp.toFixed(4))}
+                        aria-label={`Games played by ${player.name || `player ${pi + 1}`}`}
                         title="Games played. 1 = full game. Enter a decimal (0.5) or a slash fraction (11/23)."
                         onblur={(e) => setPlayerGp(sideKey, pi, (e.target as HTMLInputElement).value)} />
                     {:else}

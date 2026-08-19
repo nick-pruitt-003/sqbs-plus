@@ -294,20 +294,24 @@ mod tests {
 
     #[test]
     fn duplicate_games_detected_regardless_of_side() {
-        let mut t = Tournament::default();
-        t.games = vec![
-            game(1, 0, 1),
-            game(1, 1, 0), // same pair, same round, sides swapped → duplicate
-            game(2, 0, 1), // different round → not a duplicate
-            game(1, 0, 2), // different pair → not a duplicate
-        ];
+        let t = Tournament {
+            games: vec![
+                game(1, 0, 1),
+                game(1, 1, 0), // same pair, same round, sides swapped → duplicate
+                game(2, 0, 1), // different round → not a duplicate
+                game(1, 0, 2), // different pair → not a duplicate
+            ],
+            ..Default::default()
+        };
         assert_eq!(t.duplicate_game_indexes(), vec![1]);
     }
 
     #[test]
     fn no_duplicates_in_clean_schedule() {
-        let mut t = Tournament::default();
-        t.games = vec![game(1, 0, 1), game(1, 2, 3), game(2, 0, 2)];
+        let t = Tournament {
+            games: vec![game(1, 0, 1), game(1, 2, 3), game(2, 0, 2)],
+            ..Default::default()
+        };
         assert!(t.duplicate_game_indexes().is_empty());
     }
 }

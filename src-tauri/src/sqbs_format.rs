@@ -264,8 +264,10 @@ impl<R: BufRead> SqbsParser<R> {
             if let Ok(count) = self.next_int() {
                 if count == team_count as i64 && self.pos + team_count <= self.lines.len() {
                     for i in 0..team_count {
+                        // A rank outside 1..=team_count can't name a placement,
+                        // so treat it as "auto" rather than trusting it.
                         let rank = self.next_int().unwrap_or(0);
-                        if rank > 0 {
+                        if rank > 0 && rank <= team_count as i64 {
                             tournament.teams[i].manual_rank =
                                 u32::try_from(rank).unwrap_or(0);
                         }
@@ -502,13 +504,16 @@ pub fn write_sqbs<W: Write>(w: &mut W, t: &Tournament) -> io::Result<()> {
 /// files can carry the fraction form. Unparseable input yields 0.0.
 fn parse_games_played(s: &str) -> f32 {
     let trimmed = s.trim();
-    if let Some((num, den)) = trimmed.split_once('/') {
+    let value = if let Some((num, den)) = trimmed.split_once('/') {
         let n: f32 = num.trim().parse().unwrap_or(0.0);
         let d: f32 = den.trim().parse().unwrap_or(0.0);
         if d == 0.0 { 0.0 } else { n / d }
     } else {
         trimmed.parse().unwrap_or(0.0)
-    }
+    };
+    // Rust's float parser accepts "inf" and "NaN", and a fraction can overflow.
+    // Either would be written back out as a non-numeric line and corrupt the file.
+    if value.is_finite() { value } else { 0.0 }
 }
 
 fn write_player_record<W: Write>(w: &mut W, ps: Option<&PlayerScore>) -> io::Result<()> {
@@ -741,5 +746,33 @@ mod tests {
         assert!((parse_games_played("1") - 1.0).abs() < 1e-6);
         assert!((parse_games_played("1/0")).abs() < 1e-6);
         assert!((parse_games_played("junk")).abs() < 1e-6);
+    }
+
+    #[test]
+    fn games_played_rejects_non_finite() {
+        for s in ["inf", "-inf", "NaN", "1e40/1e-40", "1e400", "inf/1", "1/NaN"] {
+            let gp = parse_games_played(s);
+            assert!(gp.is_finite(), "{s} produced {gp}");
+            assert!(gp.abs() < 1e-6, "{s} produced {gp}");
+        }
+    }
+
+    #[test]
+    fn out_of_range_manual_rank_is_ignored() {
+        // Hand-built file with a rank above the team count: treated as auto.
+        let mut t = minimal();
+        t.teams[0].manual_rank = 1;
+        let mut buf = Vec::new();
+        write_sqbs(&mut buf, &t).expect("write failed");
+        let text = String::from_utf8(buf).expect("utf8");
+        let tampered = text.replace(
+            &format!("{MANUAL_RANKS_MARKER}\n2\n1\n0\n"),
+            &format!("{MANUAL_RANKS_MARKER}\n2\n99\n0\n"),
+        );
+        assert_ne!(tampered, text, "test fixture did not match written block");
+        let parsed = SqbsParser::new(BufReader::new(Cursor::new(tampered.into_bytes())))
+            .parse()
+            .expect("parse failed");
+        assert_eq!(parsed.teams[0].manual_rank, 0);
     }
 }
