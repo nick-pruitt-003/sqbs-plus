@@ -21,17 +21,24 @@
     }
   });
 
+  // The banner reflects the most recent check only, so correcting a flagged
+  // name clears it rather than leaving a warning about text that is no longer
+  // on screen.
   async function checkName(value: string) {
     const seq = ++checkSeq;
     if (!warn8Enabled) return;
     const trimmed = value.trim();
-    if (trimmed === "") return;
-    const unusual = await commands.checkNameCapitalization(trimmed);
-    if (seq !== checkSeq) return;  // superseded
-    if (unusual) {
-      nameWarning = trimmed;
-    } else if (nameWarning === trimmed) {
+    if (trimmed === "") {
       nameWarning = null;
+      return;
+    }
+    try {
+      const unusual = await commands.checkNameCapitalization(trimmed);
+      if (seq !== checkSeq) return;  // superseded
+      nameWarning = unusual ? trimmed : null;
+    } catch {
+      // A failed check is not a naming problem — leave the banner as it was
+      // rather than reporting a backend error on a name field.
     }
   }
 

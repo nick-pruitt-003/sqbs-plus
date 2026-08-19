@@ -24,8 +24,16 @@
   function goTo(idx: number) {
     if (idx < 0 || idx >= total) return;
     currentIdx = idx;
-    draft = JSON.parse(JSON.stringify(games[idx]));
-    gpText = {};  // in-progress text belongs to the game we just left
+    replaceDraft(JSON.parse(JSON.stringify(games[idx])));
+  }
+
+  /// Swap in a different game (or a different team on one side). Any GP text
+  /// still being typed belonged to the game/team we just left, so it goes too —
+  /// otherwise a field could show raw text from a record that is no longer on
+  /// screen while the draft holds an unrelated number.
+  function replaceDraft(next: any) {
+    draft = next;
+    gpText = {};
   }
 
   // ── New game ──────────────────────────────────────────────────────────────
@@ -64,7 +72,7 @@
     const updated = { ...tournament, games: [...tournament.games, newGame] };
     onChange(updated);
     // select the new game after state updates
-    setTimeout(() => { currentIdx = updated.games.length - 1; draft = JSON.parse(JSON.stringify(newGame)); }, 0);
+    setTimeout(() => { currentIdx = updated.games.length - 1; replaceDraft(JSON.parse(JSON.stringify(newGame))); }, 0);
   }
 
   // ── Save / Delete ─────────────────────────────────────────────────────────
@@ -95,7 +103,7 @@
     onChange({ ...tournament, games: reindexed });
     const newCurrent = Math.min(currentIdx, reindexed.length - 1);
     currentIdx = reindexed.length > 0 ? newCurrent : null;
-    draft = currentIdx !== null ? JSON.parse(JSON.stringify(reindexed[currentIdx])) : null;
+    replaceDraft(currentIdx !== null ? JSON.parse(JSON.stringify(reindexed[currentIdx])) : null);
   }
 
   function teamSwap() {
@@ -103,10 +111,10 @@
     draft = { ...draft, team_a: { ...draft.team_b, team_index: draft.team_a.team_index }, team_b: { ...draft.team_a, team_index: draft.team_b.team_index } };
     // swap team indices
     const tmpIdx = draft.team_a.team_index;
-    draft = { ...draft,
+    replaceDraft({ ...draft,
       team_a: { ...draft.team_a, team_index: draft.team_b.team_index },
       team_b: { ...draft.team_b, team_index: tmpIdx },
-    };
+    });
   }
 
   // ── Draft mutations ───────────────────────────────────────────────────────
@@ -234,7 +242,7 @@
             <select value={ti}
               onchange={(e) => {
                 const newTi = parseInt((e.target as HTMLSelectElement).value);
-                draft = { ...draft, [sideKey]: blankTeamScore(newTi) };
+                replaceDraft({ ...draft, [sideKey]: blankTeamScore(newTi) });
               }}>
               {#each tournament.teams as t, i}<option value={i}>{t.name}</option>{/each}
             </select>

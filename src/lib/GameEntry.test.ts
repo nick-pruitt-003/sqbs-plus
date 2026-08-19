@@ -66,6 +66,26 @@ describe("GameEntry games-played entry", () => {
     expect(saved.games[0].team_a.player_scores[0].gp).toBeCloseTo(11 / 23, 6);
   });
 
+  it("drops in-progress GP text when the side switches to another team", async () => {
+    const { container } = render(GameEntry, { tournament: fixture(), onChange: vi.fn() });
+    await selectFirstGame(container);
+
+    const gp = container.querySelector<HTMLInputElement>(".gp-input")!;
+    gp.value = "11/";  // mid-typing, parses to 0
+    gp.dispatchEvent(new Event("input", { bubbles: true }));
+    await Promise.resolve();
+
+    // Changing the team on this side rebuilds its player scores at gp 1.
+    const teamSelect = container.querySelector<HTMLSelectElement>(".side-header select")!;
+    teamSelect.value = "1";
+    teamSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+
+    const after = container.querySelector<HTMLInputElement>(".gp-input");
+    // Must show the new record's value, not the text typed for the old one.
+    expect(after?.value).not.toBe("11/");
+  });
+
   it("leaves the stored value alone when a GP field is blurred unedited", async () => {
     const t = fixture();
     // A value with more precision than the field displays.
